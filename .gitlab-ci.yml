@@ -1,0 +1,18 @@
+stages:
+  - security
+
+swift_security_scan:
+  stage: security
+  image: semgrep/semgrep:latest
+  tags:
+    - docker
+  script:
+    - semgrep scan --config "p/swift" --config "p/owasp-top-ten" --gitlab-sast --output gl-sast-report.json .
+  artifacts:
+    reports:
+      sast: gl-sast-report.json
+    paths:
+      - gl-sast-report.json
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"

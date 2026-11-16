@@ -1,0 +1,742 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 110;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0314777D306D37A30001749C /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0314777C306D37A30001749C /* WidgetKit.framework */; };
+		0314777F306D37A30001749C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0314777E306D37A30001749C /* SwiftUI.framework */; };
+		0314778E306D37A40001749C /* BakiTimetableWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0314777A306D37A30001749C /* BakiTimetableWidgetExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		03442F5C30548FD40000D5B7 /* KeychainSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 03442F5B30548FD40000D5B7 /* KeychainSwift */; };
+		03811AE4308DFFBC00DF125A /* KeychainSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 03811AE3308DFFBC00DF125A /* KeychainSwift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0314778C306D37A40001749C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 038B11CD30515E030015247E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 03147779306D37A30001749C;
+			remoteInfo = BakiTimetableWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		03147793306D37A40001749C /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				0314778E306D37A40001749C /* BakiTimetableWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		031224B4308DFDA100CCFE4C /* Baki.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Baki.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0314777A306D37A30001749C /* BakiTimetableWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BakiTimetableWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0314777C306D37A30001749C /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		0314777E306D37A30001749C /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		0328D71530A66D570013C494 /* Baki-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Baki-Info.plist"; sourceTree = "<group>"; };
+		038B11D930515E030015247E /* Baki watchOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Baki watchOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		0314778F306D37A40001749C /* Exceptions for "BakiTimetableWidget" folder in "BakiTimetableWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 03147779306D37A30001749C /* BakiTimetableWidgetExtension */;
+		};
+		0370A8EA308D3FD600309C65 /* Exceptions for "Config" folder in "Baki watchOS" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Release.xcconfig,
+			);
+			target = 038B11D830515E030015247E /* Baki watchOS */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		031224AF308DFD4200CCFE4C /* Baki iOS App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Baki iOS App";
+			sourceTree = "<group>";
+		};
+		03147780306D37A30001749C /* BakiTimetableWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0314778F306D37A40001749C /* Exceptions for "BakiTimetableWidget" folder in "BakiTimetableWidgetExtension" target */,
+			);
+			path = BakiTimetableWidget;
+			sourceTree = "<group>";
+		};
+		0328D71C30A670170013C494 /* Baki macOS App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Baki macOS App";
+			sourceTree = "<group>";
+		};
+		0370A8E6308D3FB800309C65 /* Config */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0370A8EA308D3FD600309C65 /* Exceptions for "Config" folder in "Baki watchOS" target */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		038B11DD30515E030015247E /* Baki Watch App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Baki Watch App";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		031224B1308DFDA100CCFE4C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				03811AE4308DFFBC00DF125A /* KeychainSwift in Frameworks */,
+			);
+		};
+		03147777306D37A30001749C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				0314777F306D37A30001749C /* SwiftUI.framework in Frameworks */,
+				0314777D306D37A30001749C /* WidgetKit.framework in Frameworks */,
+			);
+		};
+		038B11D630515E030015247E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				03442F5C30548FD40000D5B7 /* KeychainSwift in Frameworks */,
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0314777B306D37A30001749C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0314777C306D37A30001749C /* WidgetKit.framework */,
+				0314777E306D37A30001749C /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		038B11CC30515E030015247E = {
+			isa = PBXGroup;
+			children = (
+				0328D71530A66D570013C494 /* Baki-Info.plist */,
+				031224AF308DFD4200CCFE4C /* Baki iOS App */,
+				0328D71C30A670170013C494 /* Baki macOS App */,
+				0370A8E6308D3FB800309C65 /* Config */,
+				038B11DD30515E030015247E /* Baki Watch App */,
+				03147780306D37A30001749C /* BakiTimetableWidget */,
+				0314777B306D37A30001749C /* Frameworks */,
+				038B11D430515E030015247E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		038B11D430515E030015247E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				038B11D930515E030015247E /* Baki watchOS.app */,
+				0314777A306D37A30001749C /* BakiTimetableWidgetExtension.appex */,
+				031224B4308DFDA100CCFE4C /* Baki.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		031224B3308DFDA100CCFE4C /* Baki */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 031224BC308DFDA100CCFE4C /* Build configuration list for PBXNativeTarget "Baki" */;
+			buildPhases = (
+				031224B0308DFDA100CCFE4C /* Sources */,
+				031224B1308DFDA100CCFE4C /* Frameworks */,
+				031224B2308DFDA100CCFE4C /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				031224AF308DFD4200CCFE4C /* Baki iOS App */,
+				0328D71C30A670170013C494 /* Baki macOS App */,
+			);
+			name = Baki;
+			packageProductDependencies = (
+				03811AE3308DFFBC00DF125A /* KeychainSwift */,
+			);
+			productName = Baki;
+			productReference = 031224B4308DFDA100CCFE4C /* Baki.app */;
+			productType = "com.apple.product-type.application";
+		};
+		03147779306D37A30001749C /* BakiTimetableWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 03147790306D37A40001749C /* Build configuration list for PBXNativeTarget "BakiTimetableWidgetExtension" */;
+			buildPhases = (
+				03147776306D37A30001749C /* Sources */,
+				03147777306D37A30001749C /* Frameworks */,
+				03147778306D37A30001749C /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				03147780306D37A30001749C /* BakiTimetableWidget */,
+			);
+			name = BakiTimetableWidgetExtension;
+			productName = BakiTimetableWidgetExtension;
+			productReference = 0314777A306D37A30001749C /* BakiTimetableWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		038B11D830515E030015247E /* Baki watchOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 038B11E630515E040015247E /* Build configuration list for PBXNativeTarget "Baki watchOS" */;
+			buildPhases = (
+				038B11D530515E030015247E /* Sources */,
+				038B11D630515E030015247E /* Frameworks */,
+				038B11D730515E030015247E /* Resources */,
+				03147793306D37A40001749C /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0314778D306D37A40001749C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				0370A8E6308D3FB800309C65 /* Config */,
+				038B11DD30515E030015247E /* Baki Watch App */,
+			);
+			name = "Baki watchOS";
+			packageProductDependencies = (
+				03442F5B30548FD40000D5B7 /* KeychainSwift */,
+			);
+			productName = "Baki watchOS";
+			productReference = 038B11D930515E030015247E /* Baki watchOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		038B11CD30515E030015247E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2710;
+				LastUpgradeCheck = 2720;
+				TargetAttributes = {
+					031224B3308DFDA100CCFE4C = {
+						CreatedOnToolsVersion = 27.1;
+					};
+					03147779306D37A30001749C = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					038B11D830515E030015247E = {
+						CreatedOnToolsVersion = 27.0;
+					};
+				};
+			};
+			buildConfigurationList = 038B11D030515E030015247E /* Build configuration list for PBXProject "Baki" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 038B11CC30515E030015247E;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				03442F5A30548FD40000D5B7 /* XCRemoteSwiftPackageReference "keychain-swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 038B11D430515E030015247E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				038B11D830515E030015247E /* Baki watchOS */,
+				03147779306D37A30001749C /* BakiTimetableWidgetExtension */,
+				031224B3308DFDA100CCFE4C /* Baki */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		031224B2308DFDA100CCFE4C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		03147778306D37A30001749C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		038B11D730515E030015247E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		031224B0308DFDA100CCFE4C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		03147776306D37A30001749C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		038B11D530515E030015247E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0314778D306D37A40001749C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 03147779306D37A30001749C /* BakiTimetableWidgetExtension */;
+			targetProxy = 0314778C306D37A40001749C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		031224BD308DFDA100CCFE4C /* Debug configuration for PBXNativeTarget "Baki" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=macosx*]" = "AppIcon-macos";
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = "Baki iOS App/Baki iOS.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CN23QY77RW;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Baki-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Baki;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kpn2.Baki;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		031224BE308DFDA100CCFE4C /* Release configuration for PBXNativeTarget "Baki" */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 0370A8E6308D3FB800309C65 /* Config */;
+			baseConfigurationReferenceRelativePath = Release.xcconfig;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=macosx*]" = "AppIcon-macos";
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = "Baki iOS App/Baki iOS.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CN23QY77RW;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Baki-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Baki;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kpn2.Baki;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		03147791306D37A40001749C /* Debug configuration for PBXNativeTarget "BakiTimetableWidgetExtension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = BakiTimetableWidget/BakiTimetableWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CN23QY77RW;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BakiTimetableWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BakiTimetableWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kpn2.baki.Baki.watchkitapp.BakiTimetableWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.6;
+			};
+			name = Debug;
+		};
+		03147792306D37A40001749C /* Release configuration for PBXNativeTarget "BakiTimetableWidgetExtension" */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 0370A8E6308D3FB800309C65 /* Config */;
+			baseConfigurationReferenceRelativePath = Release.xcconfig;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = BakiTimetableWidget/BakiTimetableWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CN23QY77RW;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BakiTimetableWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BakiTimetableWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kpn2.baki.Baki.watchkitapp.BakiTimetableWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 26.6;
+			};
+			name = Release;
+		};
+		038B11E430515E040015247E /* Debug configuration for PBXProject "Baki" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = CN23QY77RW;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		038B11E530515E040015247E /* Release configuration for PBXProject "Baki" */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 0370A8E6308D3FB800309C65 /* Config */;
+			baseConfigurationReferenceRelativePath = Release.xcconfig;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = CN23QY77RW;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		038B11E730515E040015247E /* Debug configuration for PBXNativeTarget "Baki watchOS" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Baki Watch App/Baki Watch App.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CN23QY77RW;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Baki;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKWatchOnly = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kpn2.baki.Baki.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.6;
+			};
+			name = Debug;
+		};
+		038B11E830515E040015247E /* Release configuration for PBXNativeTarget "Baki watchOS" */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 0370A8E6308D3FB800309C65 /* Config */;
+			baseConfigurationReferenceRelativePath = Release.xcconfig;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Baki Watch App/Baki Watch App.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CN23QY77RW;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Baki;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKWatchOnly = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kpn2.baki.Baki.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 26.6;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		031224BC308DFDA100CCFE4C /* Build configuration list for PBXNativeTarget "Baki" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				031224BD308DFDA100CCFE4C /* Debug configuration for PBXNativeTarget "Baki" */,
+				031224BE308DFDA100CCFE4C /* Release configuration for PBXNativeTarget "Baki" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		03147790306D37A40001749C /* Build configuration list for PBXNativeTarget "BakiTimetableWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				03147791306D37A40001749C /* Debug configuration for PBXNativeTarget "BakiTimetableWidgetExtension" */,
+				03147792306D37A40001749C /* Release configuration for PBXNativeTarget "BakiTimetableWidgetExtension" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		038B11D030515E030015247E /* Build configuration list for PBXProject "Baki" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				038B11E430515E040015247E /* Debug configuration for PBXProject "Baki" */,
+				038B11E530515E040015247E /* Release configuration for PBXProject "Baki" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		038B11E630515E040015247E /* Build configuration list for PBXNativeTarget "Baki watchOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				038B11E730515E040015247E /* Debug configuration for PBXNativeTarget "Baki watchOS" */,
+				038B11E830515E040015247E /* Release configuration for PBXNativeTarget "Baki watchOS" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		03442F5A30548FD40000D5B7 /* XCRemoteSwiftPackageReference "keychain-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/evgenyneu/keychain-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 24.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		03442F5B30548FD40000D5B7 /* KeychainSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 03442F5A30548FD40000D5B7 /* XCRemoteSwiftPackageReference "keychain-swift" */;
+			productName = KeychainSwift;
+		};
+		03811AE3308DFFBC00DF125A /* KeychainSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 03442F5A30548FD40000D5B7 /* XCRemoteSwiftPackageReference "keychain-swift" */;
+			productName = KeychainSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 038B11CD30515E030015247E /* Project object */;
+	validationLevel = 1;
+}

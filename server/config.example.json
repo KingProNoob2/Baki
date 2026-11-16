@@ -1,0 +1,12 @@
+{
+  "listen": ":8787",
+  "api_key": "CHANGE-ME-openssl-rand-hex-24",
+  "poll_seconds": 120,
+  "data_dir": "/data",
+  "apns": {
+    "key_file": "/data/AuthKey_XXXXXXXXXX.p8",
+    "key_id": "XXXXXXXXXX",
+    "team_id": "YYYYYYYYYY",
+    "bundle_id": "com.example.Baki"
+  }
+}

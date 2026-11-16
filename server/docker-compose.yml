@@ -1,0 +1,8 @@
+services:
+  baki-notify:
+    build: .
+    ports:
+      - "8787:8787"   # put a TLS reverse proxy (Caddy, nginx, Traefik) in front of this
+    volumes:
+      - ./data:/data  # config.json, your .p8 key, and the saved registrations
+    restart: unless-stopped
