@@ -22,6 +22,7 @@ struct MarkPredictorView: View {
     private static let gradeOptions = ["1", "1-", "2", "2-", "3", "3-", "4", "4-", "5"]
 
     @State private var guesses: [Guess] = []
+    @State private var selectedGrade: String = "1"
     @State private var newMarkWeight: Int
 
     init(item: SubjectMarks, isEmbeddedInSplit: Bool = false) {
@@ -41,278 +42,198 @@ struct MarkPredictorView: View {
         return text?.isEmpty == false ? text : nil
     }
 
+    private var displayedAverage: String? {
+        predicted ?? currentAverage
+    }
+
     private var existingMarks: [Mark] {
         MarksScreen.sortedNewestFirst(item).marks
     }
 
-    /// Returns the segmented weight options sorted in numerical order, placing any custom weight before 10.
-    private func weightOptions(for currentWeight: Int) -> [Int] {
-        var base = [1, 2, 3, 4, 5, 10]
-        if !base.contains(currentWeight) && currentWeight >= 1 && currentWeight <= 10 {
-            base.append(currentWeight)
-            base.sort()
-        }
-        return base
-    }
-
     var body: some View {
-        Form {
+        GroupedList {
             heroSection
-            quickAddSection
-            guessesSection
+            addMarkSection
+            addButtonSection
+            if !guesses.isEmpty {
+                guessesSection
+            }
             existingMarksSection
         }
-        .formStyle(.grouped)
+        .groupedList()
         .duoDetailNavigationTitle(subjectName, isEmbeddedInSplit: isEmbeddedInSplit)
+        .toolbar {
+            if !guesses.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(role: .destructive) {
+                        withAnimation {
+                            guesses.removeAll()
+                        }
+                    } label: {
+                        Label("Smazat vše", systemImage: "trash")
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Sections
 
     private var heroSection: some View {
         Section {
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 if isEmbeddedInSplit {
                     Text(subjectName)
                         .font(.headline)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                HStack(alignment: .center, spacing: 0) {
-                    VStack(spacing: 2) {
-                        Text("Aktuální průměr")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        if let current = currentAverage {
-                            Text("Ø \(current)")
-                                .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                                .foregroundStyle(MarkColor.forAverage(current))
-                        } else {
-                            Text("–")
-                                .font(.system(size: 24, weight: .bold, design: .rounded))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    Image(systemName: "arrow.right")
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 4)
-
-                    VStack(spacing: 2) {
-                        Text("Nový průměr")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        if let pred = predicted {
-                            Text("Ø \(pred)")
-                                .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                                .foregroundStyle(MarkColor.forAverage(pred))
-                        } else {
-                            Text(currentAverage.map { "Ø \($0)" } ?? "–")
-                                .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                                .foregroundStyle(currentAverage.map { MarkColor.forAverage($0) } ?? .secondary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-
-                if let change = changeText {
-                    HStack(spacing: 6) {
-                        Image(systemName: change.delta < 0 ? "arrow.down.right" : (change.delta > 0 ? "arrow.up.right" : "equal"))
-                            .font(.caption.weight(.bold))
-                        Text(change.text)
-                            .font(.subheadline.weight(.semibold).monospacedDigit())
-                        if abs(change.delta) >= 0.005 {
-                            Text(change.delta < 0 ? "(zlepšení)" : "(zhoršení)")
-                                .font(.caption)
-                        }
-                    }
-                    .foregroundStyle(change.color)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(change.color.opacity(0.12), in: Capsule())
-                } else if guesses.isEmpty {
-                    Text("Přidejte hypotetické známky níže pro výpočet nového průměru.")
-                        .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
+                }
+
+                if let displayed = displayedAverage {
+                    Text("Ø \(displayed)")
+                        .font(.system(size: 44, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(MarkColor.forAverage(displayed))
+                        .contentTransition(.numericText())
+                } else {
+                    Text("–")
+                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(guesses.isEmpty ? "Aktuální průměr" : "Předpokládaný průměr")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                if let change = changeText, let current = currentAverage {
+                    HStack(spacing: 6) {
+                        Text("Ø \(current)")
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "arrow.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                        Text(change.text)
+                            .foregroundStyle(change.color)
+                            .fontWeight(.semibold)
+                    }
+                    .font(.subheadline.monospacedDigit())
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .glassEffect(.regular, in: .capsule)
+                    .padding(.top, 2)
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 2)
+            .padding(.vertical, 6)
+            .plainGroupedRow()
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         }
     }
 
-    private var quickAddSection: some View {
+    private var addMarkSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 8) {
-                // Weight selector for new marks
-                HStack {
-                    HStack(spacing: 6) {
-                        Image(systemName: "scalemass")
-                        Text("Váha")
-                    }
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
-
-                    Spacer()
-
-                    Text("Váha \(newMarkWeight)")
-                        .font(.subheadline.weight(.bold).monospacedDigit())
-                        .foregroundStyle(Color.accentColor)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.12), in: Capsule())
-                        .fixedSize()
+            Picker(selection: $selectedGrade) {
+                ForEach(Self.gradeOptions, id: \.self) { grade in
+                    Text(grade).tag(grade)
                 }
+            } label: {
+                Label("Známka", systemImage: "graduationcap")
+            }
 
-                HStack(spacing: 8) {
-                    Picker("Váha nové známky", selection: $newMarkWeight) {
-                        ForEach(weightOptions(for: newMarkWeight), id: \.self) { w in
-                            Text("\(w)").tag(w)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    Menu {
-                        ForEach(1...10, id: \.self) { w in
-                            Button {
-                                newMarkWeight = w
-                            } label: {
-                                if newMarkWeight == w {
-                                    Label("Váha \(w)", systemImage: "checkmark")
-                                } else {
-                                    Text("Váha \(w)")
-                                }
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 32, height: 32)
-                    }
-                    .buttonStyle(.plain)
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                }
-
-                Divider()
-                    .padding(.vertical, 2)
-
-                // Grade buttons
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Self.gradeOptions, id: \.self) { grade in
-                            Button {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    guesses.append(Guess(text: grade, weight: newMarkWeight))
-                                }
-                            } label: {
-                                Text(grade)
-                                    .font(.headline.weight(.bold).monospacedDigit())
-                                    .foregroundStyle(MarkColor.foreground(for: MarkColor.forMark(grade)))
-                                    .frame(width: 42, height: 42)
-                                    .background(
-                                        MarkColor.forMark(grade).gradient,
-                                        in: .rect(cornerRadius: 12, style: .continuous)
-                                    )
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                    .padding(.horizontal, 1)
+            Stepper(value: $newMarkWeight, in: 1...10) {
+                LabeledContent {
+                    Text("\(newMarkWeight)")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                } label: {
+                    Label("Váha", systemImage: "scalemass")
                 }
             }
-            .padding(.vertical, 2)
         } header: {
             Text("Přidat známku")
+        } footer: {
+            if guesses.isEmpty {
+                Text("Zvolte známku a váhu pro výpočet nového průměru.")
+            }
+        }
+    }
+
+    private var addButtonSection: some View {
+        Section {
+            Button {
+                withAnimation {
+                    guesses.append(Guess(text: selectedGrade, weight: newMarkWeight))
+                }
+            } label: {
+                Label("Přidat známku \(selectedGrade)", systemImage: "plus")
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glassProminent)
+            .controlSize(.large)
+            .plainGroupedRow()
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         }
     }
 
     private var guessesSection: some View {
-        Section {
-            if guesses.isEmpty {
-                HStack {
-                    Spacer()
-                    VStack(spacing: 4) {
-                        Image(systemName: "wand.and.sparkles")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Text("Zatím žádné hypotetické známky")
-                            .font(.subheadline.weight(.medium))
-                        Text("Vyberte váhu a klepněte na známku výše.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 8)
-                    Spacer()
-                }
-            } else {
-                ForEach($guesses) { $guess in
-                    hypotheticalMarkRow($guess)
-                }
-                .onDelete { indexSet in
-                    withAnimation {
-                        guesses.remove(atOffsets: indexSet)
-                    }
-                }
+        Section("Hypotetické známky (\(guesses.count))") {
+            ForEach($guesses) { $guess in
+                hypotheticalMarkRow($guess)
             }
-        } header: {
-            HStack {
-                Text(guesses.isEmpty ? "Hypotetické známky" : "Hypotetické známky (\(guesses.count))")
-                Spacer()
-                if !guesses.isEmpty {
-                    Button("Smazat vše", role: .destructive) {
-                        withAnimation {
-                            guesses.removeAll()
-                        }
-                    }
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.red)
-                    .buttonStyle(.borderless)
+            .onDelete { indexSet in
+                withAnimation {
+                    guesses.remove(atOffsets: indexSet)
                 }
             }
         }
     }
 
     private func hypotheticalMarkRow(_ guess: Binding<Guess>) -> some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(spacing: 12) {
             MarkBadge(text: guess.wrappedValue.text)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text("Známka \(guess.wrappedValue.text)")
-                    .font(.body.weight(.semibold))
-
+                    .font(.body.weight(.medium))
                 Text("Váha \(guess.wrappedValue.weight)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            Button(role: .destructive) {
-                withAnimation {
-                    guesses.removeAll { $0.id == guess.wrappedValue.id }
+            Menu {
+                Picker("Známka", selection: guess.text) {
+                    ForEach(Self.gradeOptions, id: \.self) { grade in
+                        Text(grade).tag(grade)
+                    }
+                }
+                Picker("Váha", selection: guess.weight) {
+                    ForEach(1...10, id: \.self) { weight in
+                        Text("Váha \(weight)").tag(weight)
+                    }
+                }
+                Divider()
+                Button(role: .destructive) {
+                    withAnimation {
+                        guesses.removeAll { $0.id == guess.wrappedValue.id }
+                    }
+                } label: {
+                    Label("Odebrat", systemImage: "trash")
                 }
             } label: {
-                Image(systemName: "trash")
-                    .font(.subheadline)
-                    .foregroundStyle(.red)
-                    .frame(width: 32, height: 32)
-                    .contentShape(Rectangle())
+                Image(systemName: "ellipsis.circle")
+                    .foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel("Odebrat známku")
+            .accessibilityLabel("Upravit hypotetickou známku")
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 2)
     }
 
     private var existingMarksSection: some View {
-        Section {
+        Section("Stávající známky (\(existingMarks.count))") {
             if existingMarks.isEmpty {
                 Text("Žádné stávající známky")
                     .foregroundStyle(.secondary)
@@ -330,8 +251,6 @@ struct MarkPredictorView: View {
                     }
                 }
             }
-        } header: {
-            Text("Stávající známky (\(existingMarks.count))")
         }
     }
 
@@ -357,22 +276,11 @@ struct MarkPredictorView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                HStack(spacing: 8) {
-                    if let dateStr = mark.markDate {
-                        Text(BakiDate.formatCzechDate(dateStr))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .fixedSize()
-                    }
-                    if let weight = mark.weight {
-                        Text("Váha \(weight)")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.secondary.opacity(0.12), in: Capsule())
-                            .fixedSize()
-                    }
+                let metadata = existingMarkMetadata(mark)
+                if !metadata.isEmpty {
+                    Text(metadata)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -389,6 +297,17 @@ struct MarkPredictorView: View {
         .padding(.vertical, 2)
     }
 
+    private func existingMarkMetadata(_ mark: Mark) -> String {
+        var parts: [String] = []
+        if let dateStr = mark.markDate {
+            parts.append(BakiDate.formatCzechDate(dateStr))
+        }
+        if let weight = mark.weight {
+            parts.append("Váha \(weight)")
+        }
+        return parts.joined(separator: " · ")
+    }
+
     // MARK: - Calculation Helpers
 
     /// Predicted minus current average; lower is better in the Czech grading scale.
@@ -397,7 +316,7 @@ struct MarkPredictorView: View {
               let new = Self.number(predicted), let old = Self.number(current) else { return nil }
         let delta = new - old
         guard abs(delta) >= 0.005 else { return ("beze změny", .secondary, 0) }
-        let text = delta.formatted(.number.precision(.fractionLength(2)).sign(strategy: .always()))
+        let text = delta.formatted(.number.precision(.fractionLength(2)).sign(strategy: .always()).locale(Locale(identifier: "cs_CZ")))
         return (text, delta < 0 ? .green : .red, delta)
     }
 
