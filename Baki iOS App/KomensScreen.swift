@@ -25,6 +25,9 @@ struct MessagesScreen: View {
     @State private var loadFailed = false
     @State private var showingCompose = false
     @State private var searchText = ""
+    @State private var isSearching = false
+    @State private var searchBarVisible = false
+    @FocusState private var isSearchFieldFocused: Bool
     @State private var selectedMessageID: String?
 
     private var usesDuoSplit: Bool {
@@ -86,7 +89,7 @@ struct MessagesScreen: View {
                                 ContentUnavailableView.search(text: searchText)
                             }
                         }
-                        .duoFloatingOverlay(isVisible: type == .received) {
+                        .duoFloatingOverlay(isVisible: type == .received && !isSearching) {
                             composeButton
                         }
                 } primary: {
@@ -96,7 +99,7 @@ struct MessagesScreen: View {
                                 ContentUnavailableView.search(text: searchText)
                             }
                         }
-                        .duoFloatingOverlay(isVisible: type == .received) {
+                        .duoFloatingOverlay(isVisible: type == .received && !isSearching) {
                             composeButton
                         }
                 } secondary: {
@@ -118,11 +121,28 @@ struct MessagesScreen: View {
         .navigationTitle(screenTitle)
         .duoPrefersTabBarCompression()
         #if os(iOS)
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Hledat"
-        )
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    if searchBarVisible {
+                        closeSearch()
+                    } else {
+                        openSearch()
+                    }
+                } label: {
+                    Label(searchBarVisible ? "Zavřít hledání" : "Hledat", systemImage: searchBarVisible ? "xmark" : "magnifyingglass")
+                }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if isSearching {
+                GlassEffectContainer(spacing: 10) {
+                    liquidGlassSearchBar
+                }
+                .opacity(searchBarVisible ? 1 : 0)
+                .allowsHitTesting(searchBarVisible)
+            }
+        }
         #else
         .searchable(text: $searchText, prompt: "Hledat")
         #endif
@@ -195,6 +215,57 @@ struct MessagesScreen: View {
         .buttonBorderShape(.circle)
         .accessibilityLabel("Nová zpráva")
     }
+
+    #if os(iOS)
+    private var liquidGlassSearchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Hledat", text: $searchText)
+                .focused($isSearchFieldFocused)
+                .submitLabel(.search)
+                .autocorrectionDisabled()
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Vymazat text")
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 44)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+    }
+
+    private func openSearch() {
+        searchBarVisible = false
+        isSearching = true
+        isSearchFieldFocused = true
+        withAnimation(.easeOut(duration: 0.2)) {
+            searchBarVisible = true
+        }
+    }
+
+    private func closeSearch() {
+        isSearchFieldFocused = false
+        searchText = ""
+        withAnimation(.easeOut(duration: 0.2)) {
+            searchBarVisible = false
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(210))
+            if !searchBarVisible {
+                isSearching = false
+            }
+        }
+    }
+    #endif
 
     @ViewBuilder
     private func messageRow(_ message: KomensMessage) -> some View {
