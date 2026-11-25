@@ -20,36 +20,59 @@ struct LoginScreen: View {
     }
 
     var body: some View {
+        Group {
+            #if os(iOS)
+            DuoAdaptiveSplit(primaryRatio: 0.42) {
+                compactBody
+            } primary: {
+                VStack {
+                    Spacer(minLength: 0)
+                    header
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(24)
+            } secondary: {
+                ScrollView {
+                    VStack(spacing: 24) {
+                        formControls
+                    }
+                    .frame(maxWidth: 400)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 32)
+                    .frame(maxWidth: .infinity)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+            }
+            #else
+            compactBody
+            #endif
+        }
+        .sheet(isPresented: $showingSchoolPicker) {
+            SchoolPicker { school = $0 }
+                .duoInnerSheetPlacement(.center)
+        }
+    }
+
+    private var compactBody: some View {
+        #if os(iOS)
+        Group {
+            if #available(iOS 27.1, *) {
+                LoginCompactBody27_1(header: header, formControls: formControls)
+            } else {
+                standardCompactBody
+            }
+        }
+        #else
+        standardCompactBody
+        #endif
+    }
+
+    private var standardCompactBody: some View {
         ScrollView {
             VStack(spacing: 28) {
                 header
-                fields
-                if let errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.circle")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                }
-                Button {
-                    Task { await login() }
-                } label: {
-                    Group {
-                        if isLoggingIn {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Text("Přihlásit se").fontWeight(.semibold)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 28)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(!canSubmit || isLoggingIn)
-
-                Text("Neoficiální aplikace pro Bakaláře. Přihlašovací údaje zůstávají v klíčence tohoto zařízení.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                formControls
             }
             .frame(maxWidth: 400)
             .padding(.horizontal, 24)
@@ -57,9 +80,37 @@ struct LoginScreen: View {
             .frame(maxWidth: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .sheet(isPresented: $showingSchoolPicker) {
-            SchoolPicker { school = $0 }
+    }
+
+    @ViewBuilder
+    private var formControls: some View {
+        fields
+        if let errorMessage {
+            Label(errorMessage, systemImage: "exclamationmark.circle")
+                .font(.footnote)
+                .foregroundStyle(.red)
+                .multilineTextAlignment(.center)
         }
+        Button {
+            Task { await login() }
+        } label: {
+            Group {
+                if isLoggingIn {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text("Přihlásit se").fontWeight(.semibold)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 28)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .disabled(!canSubmit || isLoggingIn)
+
+        Text("Neoficiální aplikace pro Bakaláře. Přihlašovací údaje zůstávají v klíčence tohoto zařízení.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
     }
 
     private var header: some View {
@@ -161,3 +212,31 @@ struct LoginScreen: View {
         isLoggingIn = false
     }
 }
+
+#if os(iOS)
+@available(iOS 27.1, *)
+private struct LoginCompactBody27_1<Header: View, FormControls: View>: View {
+    let header: Header
+    let formControls: FormControls
+
+    @Environment(\.toolbarVerticalEdge) private var toolbarVerticalEdge
+
+    /// Tighten spacing only on iPhone Duo's compact vertical-bar poses (outer display / Split View),
+    /// keeping every other iPhone 100% identical to before.
+    private var isDuoVerticalBar: Bool { toolbarVerticalEdge != nil }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: isDuoVerticalBar ? 20 : 28) {
+                header
+                formControls
+            }
+            .frame(maxWidth: 400)
+            .padding(.horizontal, 24)
+            .padding(.vertical, isDuoVerticalBar ? 20 : 40)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+    }
+}
+#endif

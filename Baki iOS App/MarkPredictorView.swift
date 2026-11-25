@@ -11,6 +11,7 @@ extension SubjectMarks {
 /// locally as a weighted average of the existing and hypothetical marks. Shown pushed (iOS) or in the detail column (Mac).
 struct MarkPredictorView: View {
     let item: SubjectMarks
+    var isEmbeddedInSplit: Bool = false
 
     private struct Guess: Identifiable, Equatable {
         let id = UUID()
@@ -23,8 +24,9 @@ struct MarkPredictorView: View {
     @State private var guesses: [Guess] = []
     @State private var newMarkWeight: Int
 
-    init(item: SubjectMarks) {
+    init(item: SubjectMarks, isEmbeddedInSplit: Bool = false) {
         self.item = item
+        self.isEmbeddedInSplit = isEmbeddedInSplit
         let counts = Dictionary(grouping: item.marks.compactMap(\.weight), by: { $0 }).mapValues(\.count)
         let initialWeight = counts.max { $0.value < $1.value }?.key ?? 1
         _newMarkWeight = State(initialValue: max(1, min(initialWeight, 10)))
@@ -61,8 +63,7 @@ struct MarkPredictorView: View {
             existingMarksSection
         }
         .formStyle(.grouped)
-        .navigationTitle(subjectName)
-        .navigationBarTitleDisplayMode(.inline)
+        .duoDetailNavigationTitle(subjectName, isEmbeddedInSplit: isEmbeddedInSplit)
     }
 
     // MARK: - Sections
@@ -70,6 +71,12 @@ struct MarkPredictorView: View {
     private var heroSection: some View {
         Section {
             VStack(spacing: 10) {
+                if isEmbeddedInSplit {
+                    Text(subjectName)
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
                 HStack(alignment: .center, spacing: 0) {
                     VStack(spacing: 2) {
                         Text("Aktuální průměr")

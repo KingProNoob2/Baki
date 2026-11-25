@@ -103,10 +103,12 @@ struct SchoolPicker: View {
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Zavřít") { dismiss() }
+                    SchoolPickerCloseButton(dismiss: dismiss)
                 }
+                .duoHighVisibilityPriority()
             }
         }
+        .duoPrefersToolbarCompression()
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 480)
         #endif
@@ -125,6 +127,38 @@ struct SchoolPicker: View {
         isLoading = false
     }
 }
+
+private struct SchoolPickerCloseButton: View {
+    let dismiss: DismissAction
+
+    var body: some View {
+        #if os(iOS)
+        if #available(iOS 27.1, *) {
+            SchoolPickerCloseButton27_1(dismiss: dismiss)
+        } else {
+            Button("Zavřít") { dismiss() }
+        }
+        #else
+        Button("Zavřít") { dismiss() }
+        #endif
+    }
+}
+
+#if os(iOS)
+@available(iOS 27.1, *)
+private struct SchoolPickerCloseButton27_1: View {
+    let dismiss: DismissAction
+    @Environment(\.toolbarVerticalEdge) private var toolbarVerticalEdge
+
+    var body: some View {
+        if toolbarVerticalEdge != nil {
+            Button("Zavřít", systemImage: "xmark") { dismiss() }
+        } else {
+            Button("Zavřít") { dismiss() }
+        }
+    }
+}
+#endif
 
 private struct SchoolList: View {
     let municipality: Municipality

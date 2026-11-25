@@ -60,8 +60,34 @@ struct HomeworkScreen: View {
         }
     }
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.allowsDuoSplit) private var allowsDuoSplit
+
     @State private var store = HomeworkStore()
     @State private var mode: Mode = SavedMode.load("homework", default: .current)
+    @State private var selectedHomeworkID: String?
+
+    private var usesDuoSplit: Bool {
+        #if os(iOS)
+        allowsDuoSplit && DuoEnvironment.isInnerDisplay(
+            horizontalSizeClass: horizontalSizeClass,
+            verticalSizeClass: verticalSizeClass
+        )
+        #else
+        false
+        #endif
+    }
+
+    private var resolvedSelectedHomeworkID: String? {
+        if let selectedHomeworkID, store.homework(id: selectedHomeworkID) != nil {
+            return selectedHomeworkID
+        }
+        if mode == .current {
+            return pending.first?.id
+        }
+        return pending.first?.id ?? finished.first?.id
+    }
 
     private var today: Date { Calendar.current.startOfDay(for: Date()) }
 
@@ -98,10 +124,21 @@ struct HomeworkScreen: View {
             } else if store.homeworks.isEmpty {
                 ContentUnavailableView("Žádné úkoly", systemImage: "checklist")
             } else {
+                #if os(iOS)
+                DuoAdaptiveSplit(primaryRatio: 0.45) {
+                    list
+                } primary: {
+                    list
+                } secondary: {
+                    detailPane
+                }
+                #else
                 list
+                #endif
             }
         }
         .navigationTitle("Úkoly")
+        .duoPrefersTabBarCompression()
         .onChange(of: mode) { SavedMode.save("homework", mode) }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -160,13 +197,41 @@ struct HomeworkScreen: View {
         .groupedList()
     }
 
+    @ViewBuilder
+    private var detailPane: some View {
+        if let id = resolvedSelectedHomeworkID {
+            HomeworkDetailView(store: store, homeworkID: id, isEmbeddedInSplit: true)
+        } else {
+            ContentUnavailableView(
+                "Vyberte úkol",
+                systemImage: "checklist",
+                description: Text("Klepnutím na úkol zobrazíte jeho zadání a podrobnosti.")
+            )
+        }
+    }
+
     private func rows(_ homeworks: [Homework]) -> some View {
         ForEach(homeworks) { homework in
-            NavigationLink {
-                HomeworkDetailView(store: store, homeworkID: homework.id)
-            } label: {
-                HomeworkRow(homework: homework) {
-                    Task { await store.toggleDone(homework) }
+            Group {
+                if usesDuoSplit {
+                    Button {
+                        selectedHomeworkID = homework.id
+                    } label: {
+                        HomeworkRow(homework: homework) {
+                            Task { await store.toggleDone(homework) }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(resolvedSelectedHomeworkID == homework.id ? Color.accentColor.opacity(0.14) : nil)
+                } else {
+                    NavigationLink {
+                        HomeworkDetailView(store: store, homeworkID: homework.id)
+                    } label: {
+                        HomeworkRow(homework: homework) {
+                            Task { await store.toggleDone(homework) }
+                        }
+                    }
                 }
             }
             .swipeActions(edge: .leading) {
@@ -267,6 +332,7 @@ struct DueLabel: View {
 struct HomeworkDetailView: View {
     let store: HomeworkStore
     let homeworkID: String
+    var isEmbeddedInSplit: Bool = false
 
     var body: some View {
         if let homework = store.homework(id: homeworkID) {
@@ -280,6 +346,17 @@ struct HomeworkDetailView: View {
         let text = homework.contentText
 
         return GroupedList {
+            if isEmbeddedInSplit {
+                Section {
+                    Text(homework.subjectName)
+                        .font(.title2.bold())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 0, trailing: 4))
+            }
+
             Section("Zadání") {
                 if text.isEmpty {
                     Text("Bez textu")
@@ -376,8 +453,7 @@ struct HomeworkDetailView: View {
             }
         }
         .groupedList()
-        .navigationTitle(homework.subjectName)
-        .navigationBarTitleDisplayMode(.large)
+        .duoDetailNavigationTitle(homework.subjectName, isEmbeddedInSplit: isEmbeddedInSplit, inline: false)
     }
 
     static func linkified(_ text: String) -> AttributedString {

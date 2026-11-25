@@ -105,7 +105,17 @@ struct AbsenceScreen: View {
                     Button("Zkusit znovu") { Task { await load() } }
                 }
             } else {
+                #if os(iOS)
+                DuoAdaptiveSplit(primaryRatio: 0.42) {
+                    list
+                } primary: {
+                    summaryList
+                } secondary: {
+                    detailsList
+                }
+                #else
                 list
+                #endif
             }
         }
         .navigationTitle("Absence")
@@ -151,6 +161,32 @@ struct AbsenceScreen: View {
         }
         .groupedList()
     }
+
+    #if os(iOS)
+    private var summaryList: some View {
+        GroupedList {
+            Section {
+                summary
+                    .plainGroupedRow()
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+            }
+        }
+        .groupedList()
+    }
+
+    private var detailsList: some View {
+        GroupedList {
+            switch subjects.isEmpty ? .days : mode {
+            case .days:
+                daysSection
+            case .subjects:
+                subjectsSection
+            }
+        }
+        .groupedList()
+    }
+    #endif
 
     private var summary: some View {
         let allDays = response?.absences ?? []

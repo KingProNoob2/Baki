@@ -1,11 +1,15 @@
 import SwiftUI
 
-struct SubjectMark: Identifiable {
+struct SubjectMark: Identifiable, Equatable {
     var id: String { mark.id }
     let mark: Mark
     let subject: Subject
     let averageText: String?
     let subjectNote: String?
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.mark.id == rhs.mark.id && lhs.subject.id == rhs.subject.id
+    }
 }
 
 struct MarksScreen: View {
@@ -23,12 +27,32 @@ struct MarksScreen: View {
         }
     }
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.allowsDuoSplit) private var allowsDuoSplit
+
     @State private var subjects: [SubjectMarks] = []
     @State private var recentMarks: [SubjectMark] = []
     @State private var isLoading: Bool = false
     @State private var loadFailed: Bool = false
     @State private var mode: Mode = SavedMode.load("marks", default: .subjects)
     @State private var expandedSubjects: Set<String> = []
+    @State private var selectedMark: SubjectMark?
+
+    private var usesDuoSplit: Bool {
+        #if os(iOS)
+        allowsDuoSplit && DuoEnvironment.isInnerDisplay(
+            horizontalSizeClass: horizontalSizeClass,
+            verticalSizeClass: verticalSizeClass
+        )
+        #else
+        false
+        #endif
+    }
+
+    private var resolvedSelectedMark: SubjectMark? {
+        selectedMark ?? recentMarks.first
+    }
 
     var body: some View {
         Group {
@@ -43,21 +67,21 @@ struct MarksScreen: View {
             } else if subjects.isEmpty {
                 ContentUnavailableView("Žádné známky", systemImage: "list.number")
             } else {
-                GroupedList {
-                    switch mode {
-                    case .subjects:
-                        subjectSections
-                    case .recent:
-                        Section {
-                            recentRows
-                        }
-                    }
+                #if os(iOS)
+                DuoAdaptiveSplit(primaryRatio: 0.45) {
+                    marksList
+                } primary: {
+                    marksList
+                } secondary: {
+                    detailPane
                 }
-                .groupedList()
-                .listSectionSpacing(.compact)
+                #else
+                marksList
+                #endif
             }
         }
         .navigationTitle("Známky")
+        .duoPrefersTabBarCompression()
         .onChange(of: mode) { SavedMode.save("marks", mode) }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -80,6 +104,40 @@ struct MarksScreen: View {
         }
     }
 
+    private var marksList: some View {
+        GroupedList {
+            switch mode {
+            case .subjects:
+                subjectSections
+            case .recent:
+                Section {
+                    recentRows
+                }
+            }
+        }
+        .groupedList()
+        .listSectionSpacing(.compact)
+    }
+
+    @ViewBuilder
+    private var detailPane: some View {
+        if let item = resolvedSelectedMark {
+            MarkDetailView(
+                mark: item.mark,
+                subject: item.subject,
+                averageText: item.averageText,
+                subjectNote: item.subjectNote,
+                isEmbeddedInSplit: true
+            )
+        } else {
+            ContentUnavailableView(
+                "Vyberte známku",
+                systemImage: "list.number",
+                description: Text("Klepnutím na známku zobrazíte její podrobnosti.")
+            )
+        }
+    }
+
     private var subjectSections: some View {
         ForEach(subjects) { item in
             Section {
@@ -88,14 +146,13 @@ struct MarksScreen: View {
                 } else {
                     DisclosureGroup(isExpanded: expansionBinding(for: item.id)) {
                         ForEach(item.marks) { mark in
-                            NavigationLink {
-                                MarkDetailView(
-                                    mark: mark,
-                                    subject: item.subject,
-                                    averageText: item.averageText,
-                                    subjectNote: item.subjectNote
-                                )
-                            } label: {
+                            let entry = SubjectMark(
+                                mark: mark,
+                                subject: item.subject,
+                                averageText: item.averageText,
+                                subjectNote: item.subjectNote
+                            )
+                            markLink(entry: entry) {
                                 markRow(mark)
                             }
                         }
@@ -103,6 +160,35 @@ struct MarksScreen: View {
                         subjectLabel(item)
                     }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func markLink<RowContent: View>(
+        entry: SubjectMark,
+        @ViewBuilder label: () -> RowContent
+    ) -> some View {
+        if usesDuoSplit {
+            let isSelected = resolvedSelectedMark == entry
+            Button {
+                selectedMark = entry
+            } label: {
+                label()
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .listRowBackground(isSelected ? Color.accentColor.opacity(0.14) : nil)
+        } else {
+            NavigationLink {
+                MarkDetailView(
+                    mark: entry.mark,
+                    subject: entry.subject,
+                    averageText: entry.averageText,
+                    subjectNote: entry.subjectNote
+                )
+            } label: {
+                label()
             }
         }
     }
@@ -192,14 +278,7 @@ struct MarksScreen: View {
 
     private var recentRows: some View {
         ForEach(recentMarks) { item in
-            NavigationLink {
-                MarkDetailView(
-                    mark: item.mark,
-                    subject: item.subject,
-                    averageText: item.averageText,
-                    subjectNote: item.subjectNote
-                )
-            } label: {
+            markLink(entry: item) {
                 recentRow(item)
             }
         }
@@ -407,6 +486,7 @@ struct MarkDetailView: View {
     let subject: Subject
     let averageText: String?
     let subjectNote: String?
+    var isEmbeddedInSplit: Bool = false
 
     private var caption: String {
         mark.caption?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -517,7 +597,6 @@ struct MarkDetailView: View {
             }
         }
         .groupedList()
-        .navigationTitle(subjectName)
-        .navigationBarTitleDisplayMode(.inline)
+        .duoDetailNavigationTitle(subjectName, isEmbeddedInSplit: isEmbeddedInSplit)
     }
 }

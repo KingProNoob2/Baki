@@ -8,7 +8,7 @@ enum LessonStatus: Equatable {
 }
 
 struct TimetableScreen: View {
-    private enum Mode: String, CaseIterable, Identifiable {
+    fileprivate enum Mode: String, CaseIterable, Identifiable {
         case day = "Den"
         case week = "Týden"
 
@@ -24,6 +24,10 @@ struct TimetableScreen: View {
 
     static let weekRange = -10...10
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.allowsDuoSplit) private var allowsDuoSplit
+
     @State private var mode: Mode = SavedMode.load("timetable", default: .day)
     @State private var weekOffset = Self.todayWeekOffset
     @State private var selectedWeekday = Self.todayWeekday
@@ -31,6 +35,28 @@ struct TimetableScreen: View {
     @State private var loadedWeeks: Set<Int> = []
     /// Mirrors !isShowingToday but changes inside withAnimation, so only the toolbar animates.
     @State private var showsTodayButton = false
+    @State private var selectedLesson: SelectedLesson?
+
+    private struct SelectedLesson: Equatable {
+        let day: Day
+        let atom: Atom
+        let timetable: TimetableResponse?
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.day.id == rhs.day.id && lhs.atom.id == rhs.atom.id
+        }
+    }
+
+    private var usesDuoSplit: Bool {
+        #if os(iOS)
+        allowsDuoSplit && DuoEnvironment.isInnerDisplay(
+            horizontalSizeClass: horizontalSizeClass,
+            verticalSizeClass: verticalSizeClass
+        )
+        #else
+        false
+        #endif
+    }
 
     private var isShowingToday: Bool {
         weekOffset == Self.todayWeekOffset && (mode == .week || selectedWeekday == Self.todayWeekday)
@@ -80,54 +106,38 @@ struct TimetableScreen: View {
             .buttonBorderShape(.circle)
             .accessibilityLabel("Vybrat den")
             .accessibilityValue(dayName(for: selected))
-            .padding(.trailing, 20)
-            .padding(.bottom, 12)
         }
     }
 
     var body: some View {
-        TimelineView(.everyMinute) { context in
-            content(now: context.date)
+        #if os(iOS)
+        DuoAdaptiveSplit(primaryRatio: 0.48) {
+            primaryPane
+                .duoFloatingOverlay(isVisible: selectedDay != nil) {
+                    dayMenuButton
+                }
+        } primary: {
+            primaryPane
+                .duoFloatingOverlay(isVisible: selectedDay != nil) {
+                    dayMenuButton
+                }
+        } secondary: {
+            detailPane
         }
         .navigationTitle("Rozvrh")
-        .overlay(alignment: .bottomTrailing) {
-            dayMenuButton
-        }
+        .duoPrefersTabBarCompression()
         .onChange(of: mode) { SavedMode.save("timetable", mode) }
         .onAppear { showsTodayButton = !isShowingToday }
         .onChange(of: isShowingToday) { _, showing in
             withAnimation { showsTodayButton = !showing }
         }
-        .toolbar {
-            if showsTodayButton {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Dnes") { goToToday() }
-                }
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button("Předchozí týden", systemImage: "chevron.left") {
-                    changeWeek(by: -1)
-                }
-                .disabled(weekOffset <= Self.weekRange.lowerBound)
-                Button("Další týden", systemImage: "chevron.right") {
-                    changeWeek(by: 1)
-                }
-                .disabled(weekOffset >= Self.weekRange.upperBound)
-            }
-            ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Picker("Zobrazení", selection: $mode) {
-                        ForEach(Mode.allCases) { mode in
-                            Label(mode.rawValue, systemImage: mode.systemImage).tag(mode)
-                        }
-                    }
-                } label: {
-                    Label("Zobrazení", systemImage: mode.systemImage)
-                }
-            }
-        }
+        .modifier(TimetableToolbarModifier(
+            showsTodayButton: showsTodayButton,
+            weekOffset: weekOffset,
+            mode: $mode,
+            goToToday: goToToday,
+            changeWeek: changeWeek
+        ))
         .task(id: weekOffset) {
             await loadTimetable(offset: weekOffset)
             for neighbour in [weekOffset + 1, weekOffset - 1]
@@ -135,6 +145,81 @@ struct TimetableScreen: View {
                 await loadTimetable(offset: neighbour)
             }
         }
+        #else
+        primaryPane
+            .duoFloatingOverlay(isVisible: selectedDay != nil) {
+                dayMenuButton
+            }
+            .navigationTitle("Rozvrh")
+            .onChange(of: mode) { SavedMode.save("timetable", mode) }
+            .onAppear { showsTodayButton = !isShowingToday }
+            .onChange(of: isShowingToday) { _, showing in
+                withAnimation { showsTodayButton = !showing }
+            }
+            .modifier(TimetableToolbarModifier(
+                showsTodayButton: showsTodayButton,
+                weekOffset: weekOffset,
+                mode: $mode,
+                goToToday: goToToday,
+                changeWeek: changeWeek
+            ))
+            .task(id: weekOffset) {
+                await loadTimetable(offset: weekOffset)
+                for neighbour in [weekOffset + 1, weekOffset - 1]
+                where Self.weekRange.contains(neighbour) && weeks[neighbour] == nil {
+                    await loadTimetable(offset: neighbour)
+                }
+            }
+        #endif
+    }
+
+    private var primaryPane: some View {
+        TimelineView(.everyMinute) { context in
+            content(now: context.date)
+        }
+    }
+
+    @ViewBuilder
+    private var detailPane: some View {
+        if let lesson = resolvedSelectedLesson {
+            LessonDetailView(
+                atom: lesson.atom,
+                day: lesson.day,
+                subject: lesson.timetable?.subject(id: lesson.atom.subjectId),
+                teacher: lesson.timetable?.teacher(id: lesson.atom.teacherId),
+                room: lesson.timetable?.room(id: lesson.atom.roomId),
+                hour: lesson.timetable?.hour(id: lesson.atom.hourId),
+                isEmbeddedInSplit: true
+            )
+        } else {
+            ContentUnavailableView(
+                "Vyberte hodinu",
+                systemImage: "calendar",
+                description: Text("Klepnutím na hodinu zobrazíte její podrobnosti.")
+            )
+        }
+    }
+
+    private var resolvedSelectedLesson: SelectedLesson? {
+        if let selectedLesson {
+            return selectedLesson
+        }
+        guard usesDuoSplit,
+              let timetable = weeks[weekOffset],
+              let day = selectedDay ?? timetable.days.first(where: { Self.isToday($0) }) ?? timetable.days.first else {
+            return nil
+        }
+        let lessons = Self.lessons(in: day)
+        guard !lessons.isEmpty else { return nil }
+        let statuses = Self.statuses(for: lessons, in: day, timetable: timetable, now: Date())
+        let preferredIndex = lessons.indices.first {
+            if case .active = statuses[$0] { return true }
+            return false
+        } ?? lessons.indices.first {
+            if case .next = statuses[$0] { return true }
+            return false
+        } ?? 0
+        return SelectedLesson(day: day, atom: lessons[preferredIndex], timetable: timetable)
     }
 
     @ViewBuilder
@@ -260,6 +345,7 @@ struct TimetableScreen: View {
         .textCase(nil)
     }
 
+    @ViewBuilder
     private func lessonLink(for atom: Atom, in day: Day, timetable: TimetableResponse?, status: LessonStatus) -> some View {
         let subject = timetable?.subject(id: atom.subjectId)
         let room = timetable?.room(id: atom.roomId)
@@ -269,19 +355,37 @@ struct TimetableScreen: View {
             return false
         }()
 
-        return NavigationLink {
-            LessonDetailView(
-                atom: atom,
-                day: day,
-                subject: subject,
-                teacher: timetable?.teacher(id: atom.teacherId),
-                room: room,
-                hour: hour
+        if usesDuoSplit {
+            let candidate = SelectedLesson(day: day, atom: atom, timetable: timetable)
+            let isSelected = resolvedSelectedLesson == candidate
+
+            Button {
+                selectedLesson = candidate
+            } label: {
+                LessonRow(atom: atom, subject: subject, room: room, hour: hour, status: status)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .listRowBackground(
+                isSelected
+                    ? Color.accentColor.opacity(0.14)
+                    : (isActive ? Color.green.opacity(0.18) : nil)
             )
-        } label: {
-            LessonRow(atom: atom, subject: subject, room: room, hour: hour, status: status)
+        } else {
+            NavigationLink {
+                LessonDetailView(
+                    atom: atom,
+                    day: day,
+                    subject: subject,
+                    teacher: timetable?.teacher(id: atom.teacherId),
+                    room: room,
+                    hour: hour
+                )
+            } label: {
+                LessonRow(atom: atom, subject: subject, room: room, hour: hour, status: status)
+            }
+            .listRowBackground(isActive ? Color.green.opacity(0.18) : nil)
         }
-        .listRowBackground(isActive ? Color.green.opacity(0.18) : nil)
     }
 
     static func lessons(in day: Day) -> [Atom] {
@@ -514,6 +618,7 @@ struct LessonDetailView: View {
     let teacher: Teacher?
     let room: Room?
     let hour: Hour?
+    var isEmbeddedInSplit: Bool = false
 
     private var subjectName: String {
         let name = subject?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -638,7 +743,149 @@ struct LessonDetailView: View {
             }
         }
         .groupedList()
-        .navigationTitle(subjectName)
-        .navigationBarTitleDisplayMode(.inline)
+        .duoDetailNavigationTitle(subjectName, isEmbeddedInSplit: isEmbeddedInSplit)
     }
 }
+
+private struct TimetableToolbarModifier: ViewModifier {
+    let showsTodayButton: Bool
+    let weekOffset: Int
+    @Binding var mode: TimetableScreen.Mode
+    let goToToday: () -> Void
+    let changeWeek: (Int) -> Void
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        if #available(iOS 27.1, *) {
+            TimetableToolbar27_1(
+                showsTodayButton: showsTodayButton,
+                weekOffset: weekOffset,
+                mode: $mode,
+                goToToday: goToToday,
+                changeWeek: changeWeek,
+                content: content
+            )
+        } else {
+            legacyToolbar(content: content)
+        }
+        #else
+        legacyToolbar(content: content)
+        #endif
+    }
+
+    private func legacyToolbar(content: Content) -> some View {
+        content.toolbar {
+            if showsTodayButton {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Dnes") { goToToday() }
+                }
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button("Předchozí týden", systemImage: "chevron.left") {
+                    changeWeek(-1)
+                }
+                .disabled(weekOffset <= TimetableScreen.weekRange.lowerBound)
+                Button("Další týden", systemImage: "chevron.right") {
+                    changeWeek(1)
+                }
+                .disabled(weekOffset >= TimetableScreen.weekRange.upperBound)
+            }
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker("Zobrazení", selection: $mode) {
+                        ForEach(TimetableScreen.Mode.allCases) { mode in
+                            Label(mode.rawValue, systemImage: mode.systemImage).tag(mode)
+                        }
+                    }
+                } label: {
+                    Label("Zobrazení", systemImage: mode.systemImage)
+                }
+            }
+        }
+    }
+}
+
+#if os(iOS)
+@available(iOS 27.1, *)
+private struct TimetableToolbar27_1<BaseContent: View>: View {
+    let showsTodayButton: Bool
+    let weekOffset: Int
+    @Binding var mode: TimetableScreen.Mode
+    let goToToday: () -> Void
+    let changeWeek: (Int) -> Void
+    let content: BaseContent
+
+    @Environment(\.toolbarVerticalEdge) private var toolbarVerticalEdge
+
+    var body: some View {
+        if toolbarVerticalEdge != nil {
+            content.toolbar {
+                if showsTodayButton {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Dnes", systemImage: "arrow.uturn.backward") {
+                            goToToday()
+                        }
+                    }
+                    .visibilityPriority(.low)
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button("Předchozí týden", systemImage: "chevron.left") {
+                        changeWeek(-1)
+                    }
+                    .disabled(weekOffset <= TimetableScreen.weekRange.lowerBound)
+                    Button("Další týden", systemImage: "chevron.right") {
+                        changeWeek(1)
+                    }
+                    .disabled(weekOffset >= TimetableScreen.weekRange.upperBound)
+                }
+                .visibilityPriority(.high)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("Zobrazení", selection: $mode) {
+                            ForEach(TimetableScreen.Mode.allCases) { mode in
+                                Label(mode.rawValue, systemImage: mode.systemImage).tag(mode)
+                            }
+                        }
+                    } label: {
+                        Label("Zobrazení", systemImage: mode.systemImage)
+                    }
+                }
+                .visibilityPriority(.high)
+            }
+        } else {
+            content.toolbar {
+                if showsTodayButton {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Dnes") { goToToday() }
+                    }
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button("Předchozí týden", systemImage: "chevron.left") {
+                        changeWeek(-1)
+                    }
+                    .disabled(weekOffset <= TimetableScreen.weekRange.lowerBound)
+                    Button("Další týden", systemImage: "chevron.right") {
+                        changeWeek(1)
+                    }
+                    .disabled(weekOffset >= TimetableScreen.weekRange.upperBound)
+                }
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("Zobrazení", selection: $mode) {
+                            ForEach(TimetableScreen.Mode.allCases) { mode in
+                                Label(mode.rawValue, systemImage: mode.systemImage).tag(mode)
+                            }
+                        }
+                    } label: {
+                        Label("Zobrazení", systemImage: mode.systemImage)
+                    }
+                }
+            }
+        }
+    }
+}
+#endif

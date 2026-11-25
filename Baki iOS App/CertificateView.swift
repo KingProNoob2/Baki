@@ -46,23 +46,61 @@ struct CertificateScreen: View {
                     description: Text("Škola zatím nezveřejnila žádné vysvědčení.")
                 )
             } else {
-                List {
-                    if terms.count > 1 {
-                        termPickerSection
-                    }
-
-                    if let term = selectedTerm {
-                        summarySection(term)
-                        marksSection(term)
-                    }
+                #if os(iOS)
+                DuoAdaptiveSplit(primaryRatio: 0.42) {
+                    compactList
+                } primary: {
+                    summaryColumn
+                } secondary: {
+                    marksColumn
                 }
-                .certificateListStyle()
+                #else
+                compactList
+                #endif
             }
         }
         .navigationTitle("Vysvědčení")
         .task { await load() }
         .refreshable { await load() }
     }
+
+    private var compactList: some View {
+        List {
+            if terms.count > 1 {
+                termPickerSection
+            }
+
+            if let term = selectedTerm {
+                summarySection(term)
+                marksSection(term)
+            }
+        }
+        .certificateListStyle()
+    }
+
+    #if os(iOS)
+    private var summaryColumn: some View {
+        List {
+            if terms.count > 1 {
+                termPickerSection
+            }
+
+            if let term = selectedTerm {
+                summarySection(term)
+            }
+        }
+        .certificateListStyle()
+    }
+
+    private var marksColumn: some View {
+        List {
+            if let term = selectedTerm {
+                marksSection(term)
+            }
+        }
+        .certificateListStyle()
+    }
+    #endif
 
     // MARK: - Sections
 

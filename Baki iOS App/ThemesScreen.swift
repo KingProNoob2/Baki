@@ -137,6 +137,7 @@ enum ThemesFormat {
 
 struct ThemesScreen: View {
     @State private var subjects: [SubjectInfo] = []
+    @State private var selectedSubjectID: SubjectInfo.ID?
     @State private var isLoading = false
     @State private var loaded = false
     @State private var loadFailed = false
@@ -150,6 +151,13 @@ struct ThemesScreen: View {
             || $0.subjectAbbrev.localizedCaseInsensitiveContains(query)
             || ($0.teacherName?.localizedCaseInsensitiveContains(query) ?? false)
         }
+    }
+
+    private var selectedSubject: SubjectInfo? {
+        if let selectedSubjectID {
+            return filteredSubjects.first { $0.id == selectedSubjectID } ?? filteredSubjects.first
+        }
+        return filteredSubjects.first
     }
 
     var body: some View {
@@ -171,20 +179,22 @@ struct ThemesScreen: View {
             } else if filteredSubjects.isEmpty {
                 ContentUnavailableView.search(text: searchText)
             } else {
-                GroupedList {
-                    Section {
-                        ForEach(filteredSubjects) { subject in
-                            NavigationLink {
-                                SubjectThemesDetailScreen(subject: subject)
-                            } label: {
-                                subjectRow(subject)
-                            }
-                        }
-                    } header: {
-                        Text("Předměty (\(filteredSubjects.count))")
+                #if os(iOS)
+                DuoAdaptiveSplit(primaryRatio: 0.40) {
+                    compactSubjectsList
+                } primary: {
+                    splitSubjectsList
+                } secondary: {
+                    if let selected = selectedSubject {
+                        SubjectThemesDetailScreen(subject: selected, isEmbeddedInSplit: true)
+                            .id(selected.subjectID)
+                    } else {
+                        ContentUnavailableView("Vyberte předmět", systemImage: "book.pages")
                     }
                 }
-                .groupedList()
+                #else
+                compactSubjectsList
+                #endif
             }
         }
         .navigationTitle("Témata")
@@ -201,7 +211,49 @@ struct ThemesScreen: View {
         .refreshable { await load() }
     }
 
-    private func subjectRow(_ subject: SubjectInfo) -> some View {
+    private var compactSubjectsList: some View {
+        GroupedList {
+            Section {
+                ForEach(filteredSubjects) { subject in
+                    NavigationLink {
+                        SubjectThemesDetailScreen(subject: subject)
+                    } label: {
+                        subjectRow(subject)
+                    }
+                }
+            } header: {
+                Text("Předměty (\(filteredSubjects.count))")
+            }
+        }
+        .groupedList()
+    }
+
+    #if os(iOS)
+    private var splitSubjectsList: some View {
+        GroupedList {
+            Section {
+                ForEach(filteredSubjects) { subject in
+                    let isSelected = selectedSubject?.id == subject.id
+                    Button {
+                        selectedSubjectID = subject.id
+                    } label: {
+                        subjectRow(subject, showsDisclosure: false)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(
+                        isSelected ? Color.accentColor.opacity(0.14) : nil
+                    )
+                }
+            } header: {
+                Text("Předměty (\(filteredSubjects.count))")
+            }
+        }
+        .groupedList()
+    }
+    #endif
+
+    private func subjectRow(_ subject: SubjectInfo, showsDisclosure: Bool = true) -> some View {
         HStack(spacing: 12) {
             SubjectAbbrevBadge(text: subject.displayAbbrev)
 
@@ -220,9 +272,11 @@ struct ThemesScreen: View {
 
             Spacer(minLength: 8)
 
-            Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
+            if showsDisclosure {
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.vertical, 2)
     }
@@ -248,6 +302,7 @@ struct ThemesScreen: View {
 
 struct SubjectThemesDetailScreen: View {
     let subject: SubjectInfo
+    var isEmbeddedInSplit: Bool = false
 
     @State private var themes: [SubjectTheme] = []
     @State private var resolvedSubject: Subject?
@@ -274,7 +329,7 @@ struct SubjectThemesDetailScreen: View {
     }
 
     var body: some View {
-        Group {
+        let content = Group {
             if !loaded && isLoading {
                 ThemesDetailSkeleton()
             } else if themes.isEmpty && loadFailed {
@@ -293,6 +348,17 @@ struct SubjectThemesDetailScreen: View {
                 ContentUnavailableView.search(text: searchText)
             } else {
                 GroupedList {
+                    if isEmbeddedInSplit {
+                        Section {
+                            HStack(spacing: 12) {
+                                Text(title)
+                                    .font(.headline)
+                                Spacer(minLength: 8)
+                                sortMenu
+                            }
+                        }
+                    }
+
                     if let teacher = subject.teacherName {
                         Section {
                             LabeledContent {
@@ -319,28 +385,38 @@ struct SubjectThemesDetailScreen: View {
                 .groupedList()
             }
         }
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "Hledat v tématech")
-        // System Liquid Glass search in the top bar: a bottom bar would sit under the tab bar.
-        .searchToolbarBehavior(.minimize)
-        .toolbar {
-            DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Picker("Řazení", selection: $sortOrder) {
-                        ForEach(ThemeSortOrder.allCases) { order in
-                            Label(order.rawValue, systemImage: order.systemImage).tag(order)
-                        }
-                    }
-                } label: {
-                    Label("Řazení", systemImage: sortOrder.systemImage)
-                }
-            }
-        }
         .onChange(of: sortOrder) { SavedMode.save("themesSort", sortOrder) }
         .task(id: subject.subjectID) { await load() }
         .refreshable { await load() }
+
+        if isEmbeddedInSplit {
+            content
+        } else {
+            content
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .searchable(text: $searchText, prompt: "Hledat v tématech")
+                // System Liquid Glass search in the top bar: a bottom bar would sit under the tab bar.
+                .searchToolbarBehavior(.minimize)
+                .toolbar {
+                    DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        sortMenu
+                    }
+                }
+        }
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            Picker("Řazení", selection: $sortOrder) {
+                ForEach(ThemeSortOrder.allCases) { order in
+                    Label(order.rawValue, systemImage: order.systemImage).tag(order)
+                }
+            }
+        } label: {
+            Label("Řazení", systemImage: sortOrder.systemImage)
+        }
     }
 
     private func load() async {

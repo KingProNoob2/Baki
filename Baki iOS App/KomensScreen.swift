@@ -15,11 +15,34 @@ struct NoticeboardScreen: View {
 
 struct MessagesScreen: View {
     let type: BakiClient.MessageType
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.allowsDuoSplit) private var allowsDuoSplit
+
     @State private var messages: [KomensMessage] = []
     @State private var isLoading: Bool = false
     @State private var loadFailed = false
     @State private var showingCompose = false
     @State private var searchText = ""
+    @State private var selectedMessageID: String?
+
+    private var usesDuoSplit: Bool {
+        #if os(iOS)
+        allowsDuoSplit && DuoEnvironment.isInnerDisplay(
+            horizontalSizeClass: horizontalSizeClass,
+            verticalSizeClass: verticalSizeClass
+        )
+        #else
+        false
+        #endif
+    }
+
+    private var selectedMessage: KomensMessage? {
+        guard let selectedMessageID else { return nil }
+        return filteredMessages.first { $0.id == selectedMessageID }
+            ?? messages.first { $0.id == selectedMessageID }
+    }
 
     /// Messages matching the search text in sender, title or body.
     private var filteredMessages: [KomensMessage] {
@@ -57,41 +80,35 @@ struct MessagesScreen: View {
             } else if filteredMessages.isEmpty {
                 ContentUnavailableView.search(text: searchText)
             } else {
-                GroupedList {
-                    ForEach(filteredMessages) { message in
-                        NavigationLink {
-                            MessageDetailView(message: message)
-                                .task { await markAsRead(message) }
-                        } label: {
-                            messageRow(message)
+                #if os(iOS)
+                DuoAdaptiveSplit(primaryRatio: 0.42) {
+                    messagesList
+                        .duoFloatingOverlay(isVisible: type == .received) {
+                            composeButton
                         }
-                    }
+                } primary: {
+                    messagesList
+                        .duoFloatingOverlay(isVisible: type == .received) {
+                            composeButton
+                        }
+                } secondary: {
+                    detailPane
                 }
+                #else
+                messagesList
+                    .duoFloatingOverlay(isVisible: type == .received) {
+                        composeButton
+                    }
+                #endif
             }
         }
         .navigationTitle(screenTitle)
+        .duoPrefersTabBarCompression()
         .searchable(text: $searchText, prompt: "Hledat")
         // System Liquid Glass search in the top bar: a bottom bar would sit under the tab bar.
         .searchToolbarBehavior(.minimize)
         .toolbar {
             DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if type == .received {
-                Button {
-                    showingCompose = true
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.title2.weight(.medium))
-                        .frame(width: 56, height: 56)
-                        .foregroundStyle(.primary)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .accessibilityLabel("Nová zpráva")
-                .padding(.trailing, 20)
-                .padding(.bottom, 12)
-            }
         }
         .sheet(isPresented: $showingCompose) {
             ComposeMessageView()
@@ -107,6 +124,60 @@ struct MessagesScreen: View {
         .refreshable {
             await loadMessages()
         }
+    }
+
+    private var messagesList: some View {
+        GroupedList {
+            ForEach(filteredMessages) { message in
+                if usesDuoSplit {
+                    Button {
+                        selectedMessageID = message.id
+                    } label: {
+                        messageRow(message)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(selectedMessageID == message.id ? Color.accentColor.opacity(0.14) : nil)
+                } else {
+                    NavigationLink {
+                        MessageDetailView(message: message)
+                            .task { await markAsRead(message) }
+                    } label: {
+                        messageRow(message)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var detailPane: some View {
+        if let message = selectedMessage {
+            MessageDetailView(message: message, isEmbeddedInSplit: true)
+                .task(id: message.id) {
+                    await markAsRead(message)
+                }
+        } else {
+            ContentUnavailableView(
+                "Vyberte zprávu",
+                systemImage: "envelope",
+                description: Text("Klepnutím na zprávu zobrazíte její text a přílohy.")
+            )
+        }
+    }
+
+    private var composeButton: some View {
+        Button {
+            showingCompose = true
+        } label: {
+            Image(systemName: "square.and.pencil")
+                .font(.title2.weight(.medium))
+                .frame(width: 56, height: 56)
+                .foregroundStyle(.primary)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .accessibilityLabel("Nová zpráva")
     }
 
     @ViewBuilder
@@ -199,6 +270,7 @@ struct MessagesSkeleton: View {
 
 struct MessageDetailView: View {
     let message: KomensMessage
+    var isEmbeddedInSplit: Bool = false
     @State private var showingReply = false
 
     private var canReply: Bool {
@@ -263,7 +335,7 @@ struct MessageDetailView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
         }
-        .navigationBarTitleDisplayMode(.inline)
+        .duoDetailNavigationTitle("", isEmbeddedInSplit: isEmbeddedInSplit)
         .toolbar {
             if !cleanText.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -276,6 +348,7 @@ struct MessageDetailView: View {
                         showingReply = true
                     }
                 }
+                .duoHighVisibilityPriority()
             }
         }
         .sheet(isPresented: $showingReply) {
@@ -564,6 +637,7 @@ struct ComposeMessageView: View {
             }
         }
         .interactiveDismissDisabled(isDirty)
+        .duoPrefersToolbarCompression()
         .task { await loadTypes() }
     }
 
@@ -854,6 +928,8 @@ struct ReplyView: View {
             }
         }
         .interactiveDismissDisabled(!trimmedText.isEmpty)
+        .duoInnerSheetPlacement(.leading)
+        .duoPrefersToolbarCompression()
     }
 
     private func send() async {

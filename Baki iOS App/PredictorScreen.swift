@@ -3,9 +3,17 @@ import SwiftUI
 /// Předvídač (iOS): pick a subject, then play with hypothetical marks for it.
 struct PredictorScreen: View {
     @State private var subjects: [SubjectMarks] = []
+    @State private var selectedSubjectID: SubjectMarks.ID?
     @State private var isLoading = false
     @State private var loaded = false
     @State private var loadFailed = false
+
+    private var selectedSubject: SubjectMarks? {
+        if let selectedSubjectID {
+            return subjects.first { $0.id == selectedSubjectID } ?? subjects.first
+        }
+        return subjects.first
+    }
 
     var body: some View {
         Group {
@@ -24,28 +32,74 @@ struct PredictorScreen: View {
                     description: Text("Žádný předmět teď nepodporuje předpověď průměru.")
                 )
             } else {
-                GroupedList {
-                    Section {
-                        ForEach(subjects) { item in
-                            NavigationLink {
-                                MarkPredictorView(item: item)
-                            } label: {
-                                PredictorSubjectRow(item: item)
-                            }
-                        }
-                    } header: {
-                        Text("Předmět")
-                    } footer: {
-                        Text("Vyberte předmět a zkuste přidat známky, které byste mohli dostat. Průměr spočítá škola.")
+                #if os(iOS)
+                DuoAdaptiveSplit(primaryRatio: 0.40) {
+                    compactSubjectsList
+                } primary: {
+                    splitSubjectsList
+                } secondary: {
+                    if let selected = selectedSubject {
+                        MarkPredictorView(item: selected, isEmbeddedInSplit: true)
+                            .id(selected.id)
+                    } else {
+                        ContentUnavailableView("Vyberte předmět", systemImage: "wand.and.sparkles")
                     }
                 }
-                .groupedList()
+                #else
+                compactSubjectsList
+                #endif
             }
         }
         .navigationTitle("Předvídač")
         .task { await load() }
         .refreshable { await load() }
     }
+
+    private var compactSubjectsList: some View {
+        GroupedList {
+            Section {
+                ForEach(subjects) { item in
+                    NavigationLink {
+                        MarkPredictorView(item: item)
+                    } label: {
+                        PredictorSubjectRow(item: item)
+                    }
+                }
+            } header: {
+                Text("Předmět")
+            } footer: {
+                Text("Vyberte předmět a zkuste přidat známky, které byste mohli dostat. Průměr spočítá škola.")
+            }
+        }
+        .groupedList()
+    }
+
+    #if os(iOS)
+    private var splitSubjectsList: some View {
+        GroupedList {
+            Section {
+                ForEach(subjects) { item in
+                    let isSelected = selectedSubject?.id == item.id
+                    Button {
+                        selectedSubjectID = item.id
+                    } label: {
+                        PredictorSubjectRow(item: item)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(
+                        isSelected ? Color.accentColor.opacity(0.14) : nil
+                    )
+                }
+            } header: {
+                Text("Předmět")
+            } footer: {
+                Text("Vyberte předmět a zkuste přidat známky, které byste mohli dostat. Průměr spočítá škola.")
+            }
+        }
+        .groupedList()
+    }
+    #endif
 
     private func load() async {
         isLoading = true

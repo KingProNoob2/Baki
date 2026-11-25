@@ -87,10 +87,28 @@ private enum MoreDestination: Hashable {
     case noticeboard
 }
 
+#if os(iOS)
+private enum MoreSection: String, CaseIterable, Identifiable, Hashable {
+    case absence
+    case certificate
+    case noticeboard
+    case predictor
+    case themes
+    case settings
+
+    var id: Self { self }
+}
+#endif
+
 struct MainTabView: View {
     @State private var unreadCount = 0
     @State private var selection: AppTab
     @State private var morePath: [MoreDestination] = []
+    #if os(iOS)
+    @State private var moreSplitSelection: MoreSection? = .absence
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    #endif
     @State private var notificationService = NotificationService.shared
     @AppStorage(AppTab.lastKey) private var lastTab = AppTab.marks.rawValue
 
@@ -100,6 +118,15 @@ struct MainTabView: View {
         let saved = defaults.string(forKey: AppTab.lastKey).flatMap(AppTab.init(rawValue:))
         _selection = State(initialValue: restore ? saved ?? .marks : .marks)
     }
+
+    #if os(iOS)
+    private var isDuoInnerDisplay: Bool {
+        DuoEnvironment.isInnerDisplay(
+            horizontalSizeClass: horizontalSizeClass,
+            verticalSizeClass: verticalSizeClass
+        )
+    }
+    #endif
 
     var body: some View {
         TabView(selection: $selection) {
@@ -117,17 +144,18 @@ struct MainTabView: View {
             }
             .badge(unreadCount)
             Tab("Více", systemImage: "ellipsis", value: AppTab.more) {
-                NavigationStack(path: $morePath) {
-                    MoreScreen()
-                        .navigationDestination(for: MoreDestination.self) { destination in
-                            switch destination {
-                            case .noticeboard:
-                                NoticeboardScreen()
-                            }
-                        }
+                #if os(iOS)
+                if isDuoInnerDisplay {
+                    MoreSplitScreen(selection: $moreSplitSelection)
+                } else {
+                    compactMoreTab
                 }
+                #else
+                compactMoreTab
+                #endif
             }
         }
+        .duoPrefersTabBarCompression()
         .onChange(of: selection) {
             lastTab = selection.rawValue
         }
@@ -162,9 +190,28 @@ struct MainTabView: View {
             selection = .komens
         case .noticeboard:
             selection = .more
+            #if os(iOS)
+            moreSplitSelection = .noticeboard
+            if !isDuoInnerDisplay && morePath.last != .noticeboard {
+                morePath = [.noticeboard]
+            }
+            #else
             if morePath.last != .noticeboard {
                 morePath = [.noticeboard]
             }
+            #endif
+        }
+    }
+
+    private var compactMoreTab: some View {
+        NavigationStack(path: $morePath) {
+            MoreScreen()
+                .navigationDestination(for: MoreDestination.self) { destination in
+                    switch destination {
+                    case .noticeboard:
+                        NoticeboardScreen()
+                    }
+                }
         }
     }
 
@@ -228,6 +275,14 @@ struct MoreScreen: View {
     }
 
     private var accountRow: some View {
+        MoreAccountRow(user: user)
+    }
+}
+
+private struct MoreAccountRow: View {
+    let user: UserInfo?
+
+    var body: some View {
         let name = user?.displayName ?? ""
         let details = [user?.className, user?.userTypeText].compactMap { $0 }.joined(separator: " · ")
         let school = user?.schoolName ?? (user == nil ? URL(string: CredentialStorage.baseURL)?.host() ?? "" : "")
@@ -259,6 +314,76 @@ struct MoreScreen: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+#if os(iOS)
+private struct MoreSplitScreen: View {
+    @Binding var selection: MoreSection?
+    @State private var user: UserInfo?
+
+    var body: some View {
+        NavigationSplitView {
+            List(selection: $selection) {
+                Section {
+                    MoreAccountRow(user: user)
+                }
+
+                Section {
+                    NavigationLink(value: MoreSection.absence) {
+                        Label("Absence", systemImage: "person.badge.clock")
+                    }
+                    NavigationLink(value: MoreSection.certificate) {
+                        Label("Vysvědčení", systemImage: "graduationcap")
+                    }
+                    NavigationLink(value: MoreSection.noticeboard) {
+                        Label("Nástěnka", systemImage: "pin")
+                    }
+                    NavigationLink(value: MoreSection.predictor) {
+                        Label("Předvídač", systemImage: "wand.and.sparkles")
+                    }
+                    NavigationLink(value: MoreSection.themes) {
+                        Label("Témata", systemImage: "book.pages")
+                    }
+                }
+
+                Section {
+                    NavigationLink(value: MoreSection.settings) {
+                        Label("Nastavení", systemImage: "gearshape")
+                    }
+                }
+            }
+            .navigationTitle("Více")
+        } detail: {
+            NavigationStack {
+                detailContent
+            }
+            // Prevent nested splits inside More's detail column.
+            .environment(\.allowsDuoSplit, false)
+        }
+        .task {
+            guard user == nil else { return }
+            user = try? await BakiClient.shared.fetchUser()
+        }
+    }
+
+    @ViewBuilder
+    private var detailContent: some View {
+        switch selection ?? .absence {
+        case .absence:
+            AbsenceScreen()
+        case .certificate:
+            CertificateScreen()
+        case .noticeboard:
+            NoticeboardScreen()
+        case .predictor:
+            PredictorScreen()
+        case .themes:
+            ThemesScreen()
+        case .settings:
+            SettingsScreen()
+        }
+    }
+}
+#endif
 
 struct SettingsScreen: View {
     @State private var showingSignOutConfirmation = false
