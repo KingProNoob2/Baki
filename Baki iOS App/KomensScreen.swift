@@ -77,17 +77,25 @@ struct MessagesScreen: View {
                 Text("Žádné zprávy")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-            } else if filteredMessages.isEmpty {
-                ContentUnavailableView.search(text: searchText)
             } else {
                 #if os(iOS)
                 DuoAdaptiveSplit(primaryRatio: 0.42) {
                     messagesList
+                        .overlay {
+                            if filteredMessages.isEmpty {
+                                ContentUnavailableView.search(text: searchText)
+                            }
+                        }
                         .duoFloatingOverlay(isVisible: type == .received) {
                             composeButton
                         }
                 } primary: {
                     messagesList
+                        .overlay {
+                            if filteredMessages.isEmpty {
+                                ContentUnavailableView.search(text: searchText)
+                            }
+                        }
                         .duoFloatingOverlay(isVisible: type == .received) {
                             composeButton
                         }
@@ -96,6 +104,11 @@ struct MessagesScreen: View {
                 }
                 #else
                 messagesList
+                    .overlay {
+                        if filteredMessages.isEmpty {
+                            ContentUnavailableView.search(text: searchText)
+                        }
+                    }
                     .duoFloatingOverlay(isVisible: type == .received) {
                         composeButton
                     }
@@ -104,12 +117,15 @@ struct MessagesScreen: View {
         }
         .navigationTitle(screenTitle)
         .duoPrefersTabBarCompression()
+        #if os(iOS)
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Hledat"
+        )
+        #else
         .searchable(text: $searchText, prompt: "Hledat")
-        // System Liquid Glass search in the top bar: a bottom bar would sit under the tab bar.
-        .searchToolbarBehavior(.minimize)
-        .toolbar {
-            DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
-        }
+        #endif
         .sheet(isPresented: $showingCompose) {
             ComposeMessageView()
         }

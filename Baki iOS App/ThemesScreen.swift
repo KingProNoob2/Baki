@@ -40,59 +40,62 @@ struct SubjectThemeRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                HStack(spacing: 6) {
-                    if !formattedDate.isEmpty {
-                        Text(formattedDate)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    if !item.hourCaption.isEmpty {
-                        if !formattedDate.isEmpty {
-                            Text("·")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-                        Text(item.hourCaption)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                if !item.lessonLabel.isEmpty {
-                    Text("č. \(item.lessonLabel)")
-                        .font(.caption2.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(Color.accentColor)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.accentColor.opacity(0.14), in: Capsule())
-                }
-            }
-
-            if item.theme.isEmpty {
-                Text("Bez zadaného tématu")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(item.theme)
-                    .font(.body)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if !item.note.isEmpty {
-                HStack(alignment: .top, spacing: 5) {
-                    Image(systemName: "note.text")
-                        .font(.caption)
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                if item.theme.isEmpty {
+                    Text("Bez zadaného tématu")
+                        .font(.body)
                         .foregroundStyle(.secondary)
-                        .padding(.top, 2)
-                    Text(item.note)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                } else {
+                    Text(item.theme)
+                        .font(.body)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                if !item.note.isEmpty {
+                    HStack(alignment: .top, spacing: 5) {
+                        Image(systemName: "note.text")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 2)
+                        Text(item.note)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if !formattedDate.isEmpty || !item.hourCaption.isEmpty {
+                    HStack(spacing: 6) {
+                        if !formattedDate.isEmpty {
+                            Text(formattedDate)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        if !item.hourCaption.isEmpty {
+                            if !formattedDate.isEmpty {
+                                Text("·")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            Text(item.hourCaption)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            if !item.lessonLabel.isEmpty {
+                Text("č. \(item.lessonLabel)")
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.accentColor.opacity(0.14), in: Capsule())
+                    .fixedSize()
             }
         }
         .padding(.vertical, 2)
@@ -466,12 +469,20 @@ private struct ThemesDetailSkeleton: View {
         GroupedList {
             Section {
                 ForEach(0..<6, id: \.self) { _ in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("12. 11. 2026 · 3. hod")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("Opakování a procvičování učiva z předchozí hodiny")
-                            .font(.body)
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Opakování a procvičování učiva z předchozí hodiny")
+                                .font(.body)
+                            Text("12. 11. 2026 · 3. hod")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        Text("č. 30")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.secondary.opacity(0.2), in: Capsule())
                     }
                     .padding(.vertical, 2)
                 }

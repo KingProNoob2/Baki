@@ -31,6 +31,9 @@ struct TimetableScreen: View {
     @State private var mode: Mode = SavedMode.load("timetable", default: .day)
     @State private var weekOffset = Self.todayWeekOffset
     @State private var selectedWeekday = Self.todayWeekday
+    #if os(iOS)
+    @State private var dayScrollPosition = ScrollPosition(id: Self.todayWeekday)
+    #endif
     @State private var weeks: [Int: TimetableResponse] = Self.initialWeeks()
     @State private var loadedWeeks: Set<Int> = []
     /// Mirrors !isShowingToday but changes inside withAnimation, so only the toolbar animates.
@@ -242,10 +245,53 @@ struct TimetableScreen: View {
         }
     }
 
+    @ViewBuilder
     private func dayList(days: [Day], timetable: TimetableResponse?, now: Date) -> some View {
-        let day = days.first { $0.dayOfWeek == selectedWeekday } ?? days[0]
+        #if os(iOS)
+        let activeWeekday = days.contains { $0.dayOfWeek == selectedWeekday } ? selectedWeekday : days[0].dayOfWeek
 
-        return dayListBody(day, timetable: timetable, now: now)
+        // Split the standard 16pt inset evenly between the pager's contentMargins (8pt)
+        // and each day's List contentMargins (8pt) so edge margins (Mo/Fri) and gaps
+        // between adjacent days are all identically 16pt.
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                ForEach(days, id: \.dayOfWeek) { day in
+                    dayListBody(day, timetable: timetable, now: now)
+                        .contentMargins(.horizontal, 8, for: .scrollContent)
+                        .containerRelativeFrame(.horizontal)
+                }
+            }
+            .background {
+                NavigationContentScrollViewBridge(activeWeekday: activeWeekday, dayCount: days.count)
+            }
+            .scrollTargetLayout()
+        }
+        .contentMargins(.horizontal, 8, for: .scrollContent)
+        .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
+        .scrollPosition($dayScrollPosition)
+        .onAppear {
+            dayScrollPosition.scrollTo(id: activeWeekday)
+        }
+        .onChange(of: dayScrollPosition.viewID(type: Int.self)) { _, newValue in
+            if let newValue, newValue != selectedWeekday {
+                selectedWeekday = newValue
+            }
+        }
+        .onChange(of: selectedWeekday) { _, newValue in
+            let target = days.contains { $0.dayOfWeek == newValue } ? newValue : days[0].dayOfWeek
+            if dayScrollPosition.viewID(type: Int.self) != target {
+                withAnimation {
+                    dayScrollPosition.scrollTo(id: target)
+                }
+            }
+        }
+        .onChange(of: weekOffset) { _, _ in
+            dayScrollPosition.scrollTo(id: activeWeekday)
+        }
+        #else
+        let day = days.first { $0.dayOfWeek == selectedWeekday } ?? days[0]
+        dayListBody(day, timetable: timetable, now: now)
+        #endif
     }
 
     private func dayListBody(_ day: Day, timetable: TimetableResponse?, now: Date) -> some View {
@@ -885,6 +931,180 @@ private struct TimetableToolbar27_1<BaseContent: View>: View {
                     }
                 }
             }
+        }
+    }
+}
+#endif
+
+#if os(iOS)
+import UIKit
+
+/// Tells the enclosing `UINavigationController`'s page controller to track the currently visible
+/// day's vertical `List` (`UICollectionView`) as its content scroll view, and keeps that binding
+/// synced as the user swipes horizontally between days or scrolls vertically.
+private struct NavigationContentScrollViewBridge: UIViewRepresentable {
+    let activeWeekday: Int
+    let dayCount: Int
+
+    func makeUIView(context: Context) -> BridgeView {
+        let view = BridgeView()
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: BridgeView, context: Context) {
+        uiView.scheduleSync()
+    }
+
+    final class BridgeView: UIView {
+        private weak var attachedVC: UIViewController?
+        private weak var attachedScrollView: UIScrollView?
+        private weak var observedPager: UIScrollView?
+        private var pagerOffsetObservation: NSKeyValueObservation?
+        private var dayObservations: [ObjectIdentifier: NSKeyValueObservation] = [:]
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window == nil {
+                teardown()
+            } else {
+                scheduleSync()
+            }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            scheduleSync()
+        }
+
+        func scheduleSync() {
+            guard window != nil else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.window != nil else { return }
+                self.refreshObserversAndAttach()
+            }
+        }
+
+        private func teardown() {
+            pagerOffsetObservation?.invalidate()
+            pagerOffsetObservation = nil
+            observedPager = nil
+            dayObservations.values.forEach { $0.invalidate() }
+            dayObservations.removeAll()
+
+            if let vc = attachedVC, let sv = attachedScrollView, vc.contentScrollView(for: .top) === sv {
+                vc.setContentScrollView(nil, for: [.top, .bottom])
+            }
+            attachedVC = nil
+            attachedScrollView = nil
+        }
+
+        private func refreshObserversAndAttach(preferred: UICollectionView? = nil) {
+            guard let pager = enclosingPagerScrollView(),
+                  let vc = enclosingNavigationPageController() else { return }
+
+            if observedPager !== pager {
+                pagerOffsetObservation?.invalidate()
+                observedPager = pager
+                pagerOffsetObservation = pager.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
+                    MainActor.assumeIsolated {
+                        self?.syncActiveScrollView()
+                    }
+                }
+            }
+
+            let collectionViews = allCollectionViews(in: pager)
+            let currentIDs = Set(collectionViews.map(ObjectIdentifier.init))
+            for (id, obs) in dayObservations where !currentIDs.contains(id) {
+                obs.invalidate()
+                dayObservations.removeValue(forKey: id)
+            }
+            for cv in collectionViews {
+                let id = ObjectIdentifier(cv)
+                if dayObservations[id] == nil {
+                    dayObservations[id] = cv.observe(\.contentOffset, options: [.new]) { [weak self, weak cv] _, _ in
+                        MainActor.assumeIsolated {
+                            guard let self, let cv else { return }
+                            self.syncActiveScrollView(preferred: cv)
+                        }
+                    }
+                }
+            }
+
+            syncActiveScrollView(preferred: preferred, pager: pager, vc: vc, collectionViews: collectionViews)
+        }
+
+        private func syncActiveScrollView(
+            preferred: UICollectionView? = nil,
+            pager: UIScrollView? = nil,
+            vc: UIViewController? = nil,
+            collectionViews: [UICollectionView]? = nil
+        ) {
+            guard window != nil,
+                  let pager = pager ?? observedPager ?? enclosingPagerScrollView(),
+                  pager.bounds.width > 0,
+                  let vc = vc ?? enclosingNavigationPageController() else { return }
+
+            let candidates = collectionViews ?? allCollectionViews(in: pager)
+            guard !candidates.isEmpty else { return }
+
+            let visibleCenterX = pager.contentOffset.x + pager.bounds.width * 0.5
+            let target: UICollectionView?
+            if let preferred,
+               abs(preferred.convert(preferred.bounds, to: pager).midX - visibleCenterX) < pager.bounds.width * 0.6 {
+                target = preferred
+            } else {
+                target = candidates.min { lhs, rhs in
+                    let lDist = abs(lhs.convert(lhs.bounds, to: pager).midX - visibleCenterX)
+                    let rDist = abs(rhs.convert(rhs.bounds, to: pager).midX - visibleCenterX)
+                    return lDist < rDist
+                }
+            }
+
+            guard let activeCV = target else { return }
+            if vc.contentScrollView(for: .top) !== activeCV {
+                vc.setContentScrollView(activeCV, for: [.top, .bottom])
+                vc.navigationController?.navigationBar.setNeedsLayout()
+            }
+            attachedVC = vc
+            attachedScrollView = activeCV
+        }
+
+        private func enclosingNavigationPageController() -> UIViewController? {
+            var responder: UIResponder? = next
+            while let current = responder {
+                if let vc = current as? UIViewController, let nav = vc.navigationController {
+                    if let pageVC = nav.viewControllers.last(where: { self.isDescendant(of: $0.view) }) {
+                        return pageVC
+                    }
+                    return nav.topViewController ?? vc
+                }
+                responder = current.next
+            }
+            return nil
+        }
+
+        private func enclosingPagerScrollView() -> UIScrollView? {
+            var node: UIView? = superview
+            while let current = node {
+                if let scrollView = current as? UIScrollView, !(current is UICollectionView) {
+                    return scrollView
+                }
+                node = current.superview
+            }
+            return nil
+        }
+
+        private func allCollectionViews(in root: UIView) -> [UICollectionView] {
+            var result: [UICollectionView] = []
+            for child in root.subviews {
+                if let collectionView = child as? UICollectionView {
+                    result.append(collectionView)
+                } else {
+                    result.append(contentsOf: allCollectionViews(in: child))
+                }
+            }
+            return result
         }
     }
 }
