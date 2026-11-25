@@ -2,30 +2,73 @@ import SwiftUI
 import WidgetKit
 
 struct SchoolSelectScreen: View {
+    @State private var selectedSchool: School?
     @State private var baseURL: String = CredentialStorage.baseURL
+    @State private var showingSchoolPicker: Bool = false
     @State private var showLogin: Bool = false
 
+    private var effectiveURL: String {
+        baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     var body: some View {
-        VStack(spacing: 8) {
-            Text("Enter your school URL")
-                .font(.headline)
-                .multilineTextAlignment(.center)
+        ScrollView {
+            VStack(spacing: 8) {
+                Text("Vyberte školu")
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
 
-            TextField("URL", text: $baseURL)
-                .padding()
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-
-            Button("Continue") {
-                let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    showLogin = true
+                Button {
+                    showingSchoolPicker = true
+                } label: {
+                    if let selectedSchool {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(selectedSchool.name)
+                                .font(.footnote)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Text(selectedSchool.host)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                    } else {
+                        Label("Vybrat školu", systemImage: "building.columns")
+                    }
                 }
+                .tint(.blue)
+                .buttonBorderShape(selectedSchool == nil ? .capsule : .roundedRectangle(radius: 14))
+
+                TextField("Nebo zadejte URL", text: $baseURL)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onChange(of: baseURL) { _, newValue in
+                        if let selectedSchool, newValue != selectedSchool.schoolUrl {
+                            self.selectedSchool = nil
+                        }
+                    }
+
+                Button("Pokračovat") {
+                    if !effectiveURL.isEmpty {
+                        showLogin = true
+                    }
+                }
+                .tint(.blue)
+                .disabled(effectiveURL.isEmpty)
             }
-            .tint(.blue)
+            .padding(.horizontal)
+        }
+        .sheet(isPresented: $showingSchoolPicker) {
+            SchoolPicker { school in
+                selectedSchool = school
+                baseURL = school.schoolUrl
+            }
         }
         .navigationDestination(isPresented: $showLogin) {
-            LoginView(schoolURL: baseURL)
+            LoginView(schoolURL: effectiveURL)
         }
     }
 }
