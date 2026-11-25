@@ -35,6 +35,7 @@ struct TimetableScreen: View {
     @State private var dayScrollPosition = ScrollPosition(id: Self.todayWeekday)
     #endif
     @State private var weeks: [Int: TimetableResponse] = Self.initialWeeks()
+    @State private var weekVersions: [Int: Int] = [:]
     @State private var loadedWeeks: Set<Int> = []
     /// Mirrors !isShowingToday but changes inside withAnimation, so only the toolbar animates.
     @State private var showsTodayButton = false
@@ -253,12 +254,24 @@ struct TimetableScreen: View {
         // Split the standard 16pt inset evenly between the pager's contentMargins (8pt)
         // and each day's List contentMargins (8pt) so edge margins (Mo/Fri) and gaps
         // between adjacent days are all identically 16pt.
+        let version = weekVersions[weekOffset] ?? 0
+        let minuteBucket = Int(now.timeIntervalSinceReferenceDate / 60)
+
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
                 ForEach(days, id: \.dayOfWeek) { day in
-                    dayListBody(day, timetable: timetable, now: now)
-                        .contentMargins(.horizontal, 8, for: .scrollContent)
-                        .containerRelativeFrame(.horizontal)
+                    EquatableDayPage(
+                        dayID: day.id,
+                        weekOffset: weekOffset,
+                        version: version,
+                        minuteBucket: minuteBucket,
+                        selectedLessonID: usesDuoSplit ? selectedLesson?.atom.id : nil
+                    ) {
+                        dayListBody(day, timetable: timetable, now: now)
+                            .contentMargins(.horizontal, 8, for: .scrollContent)
+                    }
+                    .equatable()
+                    .containerRelativeFrame(.horizontal)
                 }
             }
             .background {
@@ -472,6 +485,7 @@ struct TimetableScreen: View {
         guard !Task.isCancelled else { return }
         if let response {
             weeks[offset] = response
+            weekVersions[offset, default: 0] += 1
         }
         loadedWeeks.insert(offset)
     }
@@ -936,12 +950,35 @@ private struct TimetableToolbar27_1<BaseContent: View>: View {
 }
 #endif
 
+/// Prevents all 5 day lists from re-evaluating their bodies when unrelated state
+/// (such as `selectedWeekday` or toolbar `showsTodayButton`) changes mid-swipe.
+private struct EquatableDayPage<Content: View>: View, Equatable {
+    let dayID: String
+    let weekOffset: Int
+    let version: Int
+    let minuteBucket: Int
+    let selectedLessonID: String?
+    let content: () -> Content
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.dayID == rhs.dayID
+            && lhs.weekOffset == rhs.weekOffset
+            && lhs.version == rhs.version
+            && lhs.minuteBucket == rhs.minuteBucket
+            && lhs.selectedLessonID == rhs.selectedLessonID
+    }
+
+    var body: some View {
+        content()
+    }
+}
+
 #if os(iOS)
 import UIKit
 
 /// Tells the enclosing `UINavigationController`'s page controller to track the currently visible
 /// day's vertical `List` (`UICollectionView`) as its content scroll view, and keeps that binding
-/// synced as the user swipes horizontally between days or scrolls vertically.
+/// synced as the user swipes between days or scrolls vertically — without per-frame view traversal.
 private struct NavigationContentScrollViewBridge: UIViewRepresentable {
     let activeWeekday: Int
     let dayCount: Int
@@ -953,121 +990,119 @@ private struct NavigationContentScrollViewBridge: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: BridgeView, context: Context) {
-        uiView.scheduleSync()
+        uiView.update(activeWeekday: activeWeekday, dayCount: dayCount)
     }
 
     final class BridgeView: UIView {
-        private weak var attachedVC: UIViewController?
+        private weak var cachedVC: UIViewController?
+        private weak var cachedPager: UIScrollView?
         private weak var attachedScrollView: UIScrollView?
-        private weak var observedPager: UIScrollView?
-        private var pagerOffsetObservation: NSKeyValueObservation?
+        private var cachedCollectionViews: [UICollectionView] = []
         private var dayObservations: [ObjectIdentifier: NSKeyValueObservation] = [:]
+        private var lastDayCount = -1
+        private var lastActiveWeekday = -1
+        private var syncScheduled = false
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
             if window == nil {
                 teardown()
             } else {
-                scheduleSync()
+                scheduleSync(forceRescan: true)
             }
         }
 
-        override func layoutSubviews() {
-            super.layoutSubviews()
-            scheduleSync()
+        func update(activeWeekday: Int, dayCount: Int) {
+            let countChanged = dayCount != lastDayCount
+            let dayChanged = activeWeekday != lastActiveWeekday
+            lastDayCount = dayCount
+            lastActiveWeekday = activeWeekday
+            if countChanged || dayChanged || cachedCollectionViews.isEmpty {
+                scheduleSync(forceRescan: countChanged || cachedCollectionViews.isEmpty)
+            }
         }
 
-        func scheduleSync() {
+        private func scheduleSync(forceRescan: Bool) {
             guard window != nil else { return }
+            if forceRescan {
+                cachedCollectionViews.removeAll()
+            }
+            guard !syncScheduled else { return }
+            syncScheduled = true
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.window != nil else { return }
+                guard let self else { return }
+                self.syncScheduled = false
+                guard self.window != nil else { return }
                 self.refreshObserversAndAttach()
             }
         }
 
         private func teardown() {
-            pagerOffsetObservation?.invalidate()
-            pagerOffsetObservation = nil
-            observedPager = nil
             dayObservations.values.forEach { $0.invalidate() }
             dayObservations.removeAll()
+            cachedCollectionViews.removeAll()
+            cachedPager = nil
 
-            if let vc = attachedVC, let sv = attachedScrollView, vc.contentScrollView(for: .top) === sv {
+            if let vc = cachedVC, let sv = attachedScrollView, vc.contentScrollView(for: .top) === sv {
                 vc.setContentScrollView(nil, for: [.top, .bottom])
             }
-            attachedVC = nil
+            cachedVC = nil
             attachedScrollView = nil
         }
 
-        private func refreshObserversAndAttach(preferred: UICollectionView? = nil) {
-            guard let pager = enclosingPagerScrollView(),
-                  let vc = enclosingNavigationPageController() else { return }
+        private func refreshObserversAndAttach() {
+            guard let pager = cachedPager ?? enclosingPagerScrollView(),
+                  let vc = cachedVC ?? enclosingNavigationPageController() else { return }
+            cachedPager = pager
+            cachedVC = vc
 
-            if observedPager !== pager {
-                pagerOffsetObservation?.invalidate()
-                observedPager = pager
-                pagerOffsetObservation = pager.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
-                    MainActor.assumeIsolated {
-                        self?.syncActiveScrollView()
-                    }
+            if cachedCollectionViews.isEmpty || cachedCollectionViews.contains(where: { $0.window == nil }) {
+                cachedCollectionViews = allCollectionViews(in: pager)
+                let currentIDs = Set(cachedCollectionViews.map(ObjectIdentifier.init))
+                for (id, obs) in dayObservations where !currentIDs.contains(id) {
+                    obs.invalidate()
+                    dayObservations.removeValue(forKey: id)
                 }
-            }
-
-            let collectionViews = allCollectionViews(in: pager)
-            let currentIDs = Set(collectionViews.map(ObjectIdentifier.init))
-            for (id, obs) in dayObservations where !currentIDs.contains(id) {
-                obs.invalidate()
-                dayObservations.removeValue(forKey: id)
-            }
-            for cv in collectionViews {
-                let id = ObjectIdentifier(cv)
-                if dayObservations[id] == nil {
-                    dayObservations[id] = cv.observe(\.contentOffset, options: [.new]) { [weak self, weak cv] _, _ in
-                        MainActor.assumeIsolated {
-                            guard let self, let cv else { return }
-                            self.syncActiveScrollView(preferred: cv)
+                for cv in cachedCollectionViews {
+                    let id = ObjectIdentifier(cv)
+                    if dayObservations[id] == nil {
+                        dayObservations[id] = cv.observe(\.contentOffset, options: [.new]) { [weak self, weak cv] _, _ in
+                            MainActor.assumeIsolated {
+                                guard let self, let cv else { return }
+                                // O(1) fast path: skip all work when already attached to this List.
+                                if self.attachedScrollView === cv, self.cachedVC?.contentScrollView(for: .top) === cv {
+                                    return
+                                }
+                                self.attach(cv)
+                            }
                         }
                     }
                 }
             }
 
-            syncActiveScrollView(preferred: preferred, pager: pager, vc: vc, collectionViews: collectionViews)
+            syncCenteredScrollView(pager: pager, vc: vc)
         }
 
-        private func syncActiveScrollView(
-            preferred: UICollectionView? = nil,
-            pager: UIScrollView? = nil,
-            vc: UIViewController? = nil,
-            collectionViews: [UICollectionView]? = nil
-        ) {
-            guard window != nil,
-                  let pager = pager ?? observedPager ?? enclosingPagerScrollView(),
-                  pager.bounds.width > 0,
-                  let vc = vc ?? enclosingNavigationPageController() else { return }
-
-            let candidates = collectionViews ?? allCollectionViews(in: pager)
-            guard !candidates.isEmpty else { return }
-
+        private func syncCenteredScrollView(pager: UIScrollView, vc: UIViewController) {
+            guard pager.bounds.width > 0, !cachedCollectionViews.isEmpty else { return }
             let visibleCenterX = pager.contentOffset.x + pager.bounds.width * 0.5
-            let target: UICollectionView?
-            if let preferred,
-               abs(preferred.convert(preferred.bounds, to: pager).midX - visibleCenterX) < pager.bounds.width * 0.6 {
-                target = preferred
-            } else {
-                target = candidates.min { lhs, rhs in
-                    let lDist = abs(lhs.convert(lhs.bounds, to: pager).midX - visibleCenterX)
-                    let rDist = abs(rhs.convert(rhs.bounds, to: pager).midX - visibleCenterX)
-                    return lDist < rDist
-                }
-            }
+            guard let activeCV = cachedCollectionViews.min(by: { lhs, rhs in
+                let lDist = abs(lhs.convert(lhs.bounds, to: pager).midX - visibleCenterX)
+                let rDist = abs(rhs.convert(rhs.bounds, to: pager).midX - visibleCenterX)
+                return lDist < rDist
+            }) else { return }
 
-            guard let activeCV = target else { return }
-            if vc.contentScrollView(for: .top) !== activeCV {
-                vc.setContentScrollView(activeCV, for: [.top, .bottom])
-                vc.navigationController?.navigationBar.setNeedsLayout()
+            attach(activeCV, vc: vc)
+        }
+
+        private func attach(_ cv: UICollectionView, vc: UIViewController? = nil) {
+            guard let targetVC = vc ?? cachedVC ?? enclosingNavigationPageController() else { return }
+            cachedVC = targetVC
+            if targetVC.contentScrollView(for: .top) !== cv {
+                targetVC.setContentScrollView(cv, for: [.top, .bottom])
+                targetVC.navigationController?.navigationBar.setNeedsLayout()
             }
-            attachedVC = vc
-            attachedScrollView = activeCV
+            attachedScrollView = cv
         }
 
         private func enclosingNavigationPageController() -> UIViewController? {
