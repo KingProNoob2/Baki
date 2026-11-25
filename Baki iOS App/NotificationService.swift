@@ -35,6 +35,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     var marksEnabled: Bool {
         didSet {
             UserDefaults.standard.set(marksEnabled, forKey: NotificationPreferenceKey.marks)
+            scheduleBackgroundRefresh()
             if marksEnabled {
                 Task { await seedCategoryIfNeeded(.marks) }
             }
@@ -43,6 +44,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     var komensEnabled: Bool {
         didSet {
             UserDefaults.standard.set(komensEnabled, forKey: NotificationPreferenceKey.komens)
+            scheduleBackgroundRefresh()
             if komensEnabled {
                 Task { await seedCategoryIfNeeded(.komens) }
             }
@@ -51,6 +53,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     var noticeboardEnabled: Bool {
         didSet {
             UserDefaults.standard.set(noticeboardEnabled, forKey: NotificationPreferenceKey.noticeboard)
+            scheduleBackgroundRefresh()
             if noticeboardEnabled {
                 Task { await seedCategoryIfNeeded(.noticeboard) }
             }
@@ -59,12 +62,21 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     var timetableEnabled: Bool {
         didSet {
             UserDefaults.standard.set(timetableEnabled, forKey: NotificationPreferenceKey.timetable)
+            scheduleBackgroundRefresh()
             if timetableEnabled {
                 Task { await seedCategoryIfNeeded(.timetable) }
             }
         }
     }
     var lastCheckDate: Date?
+
+    #if os(iOS)
+    private var foregroundPollingTask: Task<Void, Never>?
+
+    var isBackgroundRefreshAvailable: Bool {
+        UIApplication.shared.backgroundRefreshStatus == .available
+    }
+    #endif
 
     private static let snapshotStorageKey = "notifications.snapshot.v1"
 
@@ -115,6 +127,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         Task { await refreshAuthorizationStatus() }
         #if os(iOS)
         registerBackgroundTask()
+        scheduleBackgroundRefresh()
         #endif
     }
 
@@ -183,7 +196,8 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         }
 
         let request = BGAppRefreshTaskRequest(identifier: Self.refreshTaskIdentifier)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 5 * 60)
+        // Ask iOS for the earliest eligible slot without adding an artificial multi-minute floor.
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 60)
 
         do {
             try BGTaskScheduler.shared.submit(request)
@@ -192,11 +206,29 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    func startForegroundPolling() {
+        stopForegroundPolling()
+        guard CredentialStorage.hasValidSession, anyCategoryEnabled, !PushService.shared.isConnected else { return }
+        foregroundPollingTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(120))
+                guard !Task.isCancelled, let self else { break }
+                guard !PushService.shared.isConnected, self.anyCategoryEnabled, self.isAuthorized else { continue }
+                await self.checkForUpdates(notify: true)
+            }
+        }
+    }
+
+    func stopForegroundPolling() {
+        foregroundPollingTask?.cancel()
+        foregroundPollingTask = nil
+    }
+
     private func handleAppRefresh(task: BGAppRefreshTask) async {
         scheduleBackgroundRefresh()
 
         let workTask = Task { @MainActor in
-            await self.checkForUpdates(notify: true)
+            await self.checkForUpdates(notify: true, isBackground: true)
         }
 
         task.expirationHandler = {
@@ -208,6 +240,8 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     }
     #else
     func scheduleBackgroundRefresh() {}
+    func startForegroundPolling() {}
+    func stopForegroundPolling() {}
     #endif
 
     // MARK: - Session & Snapshot Lifecycle
@@ -220,6 +254,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
         UNUserNotificationCenter.current().setBadgeCount(0)
         #if os(iOS)
+        stopForegroundPolling()
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.refreshTaskIdentifier)
         #endif
     }
@@ -227,6 +262,12 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     func updateBadgeCount(_ count: Int) {
         #if os(iOS)
         UNUserNotificationCenter.current().setBadgeCount(max(0, count))
+        #endif
+    }
+
+    private func updateBadgeCountAsync(_ count: Int) async {
+        #if os(iOS)
+        try? await UNUserNotificationCenter.current().setBadgeCount(max(0, count))
         #endif
     }
 
@@ -331,8 +372,8 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    /// Background refreshes are scheduled by iOS and can be hours apart, so also check when the app
-    /// comes to the foreground if the last check is older than a few minutes.
+    /// Background refreshes are scheduled by iOS and can be spaced apart, so also check whenever
+    /// the app comes to the foreground if the last check is older than a minute.
     func checkOnForegroundIfStale() async {
         #if os(iOS)
         let pushConnected = PushService.shared.isConnected
@@ -340,12 +381,30 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         let pushConnected = false
         #endif
         guard anyCategoryEnabled, isAuthorized, !pushConnected else { return }
-        if let lastCheckDate, Date().timeIntervalSince(lastCheckDate) < 5 * 60 { return }
+        if let lastCheckDate, Date().timeIntervalSince(lastCheckDate) < 60 { return }
         await checkForUpdates(notify: true)
     }
 
+    private enum FetchOutcome: Sendable {
+        case marks(MarksResponse?)
+        case komens([KomensMessage]?)
+        case noticeboard([KomensMessage]?)
+        case week1(TimetableResponse?)
+        case week2(TimetableResponse?)
+        case deadline
+    }
+
+    private struct PendingNotification {
+        let identifier: String
+        let title: String
+        var subtitle: String? = nil
+        let body: String
+        let threadIdentifier: String
+        let route: NotificationRoute
+    }
+
     @discardableResult
-    func checkForUpdates(notify: Bool) async -> Bool {
+    func checkForUpdates(notify: Bool, isBackground: Bool = false) async -> Bool {
         guard !isChecking else { return false }
         guard CredentialStorage.hasValidSession else { return false }
 
@@ -364,45 +423,123 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             return true
         }
 
-        async let marksResult: MarksResponse? = checkMarks ? (try? await BakiClient.shared.fetchMarks(recordSnapshot: false)) : nil
-        async let komensResult: [KomensMessage]? = checkKomens ? (try? await BakiClient.shared.fetchMessages(type: .received, recordSnapshot: false)) : nil
-        async let noticeboardResult: [KomensMessage]? = checkNoticeboard ? (try? await BakiClient.shared.fetchMessages(type: .noticeboard, recordSnapshot: false)) : nil
-        async let thisWeekResult: TimetableResponse? = checkTimetable ? (try? await BakiClient.shared.fetchTimetable(date: Date(), updatesCache: true, recordSnapshot: false)) : nil
-        async let nextWeekResult: TimetableResponse? = {
-            guard checkTimetable,
-                  let nextDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()) else { return nil }
-            return try? await BakiClient.shared.fetchTimetable(date: nextDate, updatesCache: false, recordSnapshot: false)
-        }()
+        // Refresh the bearer token once up front if it is expired/expiring so parallel
+        // fetches don't all hit 401 and double round-trip latency in the background.
+        await BakiClient.shared.ensureFreshSession()
 
-        let marks = await marksResult
-        let komens = await komensResult
-        let noticeboard = await noticeboardResult
-        let week1 = await thisWeekResult
-        let week2 = await nextWeekResult
+        let requestTimeout: TimeInterval? = isBackground ? 8 : nil
+        let nextWeekDate = Calendar.current.date(byAdding: .day, value: 7, to: Date())
+
+        var marks: MarksResponse?
+        var komens: [KomensMessage]?
+        var noticeboard: [KomensMessage]?
+        var week1: TimetableResponse?
+        var week2: TimetableResponse?
+
+        // In background refreshes, enforce a soft deadline well under iOS's ~30s cutoff so
+        // completed categories are still saved & notified and we avoid DAS expiration penalties.
+        await withTaskGroup(of: FetchOutcome.self) { group in
+            var remaining = 0
+
+            if checkMarks {
+                remaining += 1
+                group.addTask {
+                    .marks(try? await BakiClient.shared.fetchMarks(recordSnapshot: false, timeout: requestTimeout))
+                }
+            }
+            if checkKomens {
+                remaining += 1
+                group.addTask {
+                    .komens(try? await BakiClient.shared.fetchMessages(type: .received, recordSnapshot: false, timeout: requestTimeout))
+                }
+            }
+            if checkNoticeboard {
+                remaining += 1
+                group.addTask {
+                    .noticeboard(try? await BakiClient.shared.fetchMessages(type: .noticeboard, recordSnapshot: false, timeout: requestTimeout))
+                }
+            }
+            if checkTimetable {
+                remaining += 1
+                group.addTask {
+                    .week1(try? await BakiClient.shared.fetchTimetable(
+                        date: Date(),
+                        updatesCache: !isBackground,
+                        recordSnapshot: false,
+                        timeout: requestTimeout
+                    ))
+                }
+                if let nextWeekDate {
+                    remaining += 1
+                    group.addTask {
+                        .week2(try? await BakiClient.shared.fetchTimetable(
+                            date: nextWeekDate,
+                            updatesCache: false,
+                            recordSnapshot: false,
+                            timeout: requestTimeout
+                        ))
+                    }
+                }
+            }
+
+            if isBackground {
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(18))
+                    return .deadline
+                }
+            }
+
+            while remaining > 0, let outcome = await group.next() {
+                switch outcome {
+                case .marks(let r):
+                    marks = r
+                    remaining -= 1
+                case .komens(let m):
+                    komens = m
+                    remaining -= 1
+                case .noticeboard(let m):
+                    noticeboard = m
+                    remaining -= 1
+                case .week1(let t):
+                    week1 = t
+                    remaining -= 1
+                case .week2(let t):
+                    week2 = t
+                    remaining -= 1
+                case .deadline:
+                    group.cancelAll()
+                    remaining = 0
+                }
+            }
+
+            group.cancelAll()
+        }
 
         var snapshot = loadSnapshot()
         var anyFetchSucceeded = false
+        var pending: [PendingNotification] = []
+        var unreadKomensCount: Int?
 
         if let marks {
             anyFetchSucceeded = true
-            processMarks(marks, snapshot: &snapshot, notify: canDeliverAlerts)
+            pending += processMarks(marks, snapshot: &snapshot, notify: canDeliverAlerts)
         }
 
         if let komens {
             anyFetchSucceeded = true
-            updateBadgeCount(komens.filter(\.isUnread).count)
-            processKomens(komens, snapshot: &snapshot, notify: canDeliverAlerts)
+            unreadKomensCount = komens.filter(\.isUnread).count
+            pending += processKomens(komens, snapshot: &snapshot, notify: canDeliverAlerts)
         }
 
         if let noticeboard {
             anyFetchSucceeded = true
-            processNoticeboard(noticeboard, snapshot: &snapshot, notify: canDeliverAlerts)
+            pending += processNoticeboard(noticeboard, snapshot: &snapshot, notify: canDeliverAlerts)
         }
 
         let timetableResponses = [week1, week2].compactMap { $0 }
         if !timetableResponses.isEmpty {
             anyFetchSucceeded = true
-            processTimetable(timetableResponses, snapshot: &snapshot, notify: canDeliverAlerts)
+            pending += processTimetable(timetableResponses, snapshot: &snapshot, notify: canDeliverAlerts)
         }
 
         saveSnapshot(snapshot)
@@ -411,12 +548,23 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             lastCheckDate = now
             UserDefaults.standard.set(now.timeIntervalSince1970, forKey: NotificationPreferenceKey.lastCheckDate)
         }
+
+        if let unreadKomensCount {
+            await updateBadgeCountAsync(unreadKomensCount)
+        }
+
+        // Await every notification handoff to UNUserNotificationCenter before returning so iOS
+        // doesn't suspend the background process before the XPC delivery completes.
+        for item in pending {
+            await postNotification(item)
+        }
+
         return anyFetchSucceeded
     }
 
     // MARK: - Diff Processors
 
-    private func processMarks(_ response: MarksResponse, snapshot: inout NotificationSnapshot, notify: Bool) {
+    private func processMarks(_ response: MarksResponse, snapshot: inout NotificationSnapshot, notify: Bool) -> [PendingNotification] {
         let allPairs: [(subject: Subject, mark: Mark)] = response.subjects.flatMap { subjectMarks in
             subjectMarks.marks.map { (subjectMarks.subject, $0) }
         }
@@ -424,14 +572,15 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
         guard let existing = snapshot.seenMarkIds else {
             snapshot.seenMarkIds = allIds
-            return
+            return []
         }
 
         let newPairs = allPairs.filter { !existing.contains($0.mark.id) }
         snapshot.seenMarkIds = existing.union(allIds)
 
-        guard notify, !newPairs.isEmpty else { return }
+        guard notify, !newPairs.isEmpty else { return [] }
 
+        var notifications: [PendingNotification] = []
         if newPairs.count <= 3 {
             for (subject, mark) in newPairs {
                 let subjectName = subject.name.isEmpty ? subject.displayName : subject.name
@@ -453,13 +602,13 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                     body = "Byla zapsána nová známka."
                 }
 
-                postNotification(
+                notifications.append(PendingNotification(
                     identifier: "baki.mark.\(mark.id)",
                     title: title,
                     body: body,
                     threadIdentifier: "marks",
                     route: .marks
-                )
+                ))
             }
         } else {
             let previewItems = newPairs.prefix(4).map { pair in
@@ -470,28 +619,30 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             if remaining > 0 {
                 body += " a \(remaining) další"
             }
-            postNotification(
+            notifications.append(PendingNotification(
                 identifier: "baki.marks.batch.\(Int(Date().timeIntervalSince1970))",
                 title: "Nové známky (\(newPairs.count))",
                 body: body,
                 threadIdentifier: "marks",
                 route: .marks
-            )
+            ))
         }
+        return notifications
     }
 
-    private func processKomens(_ messages: [KomensMessage], snapshot: inout NotificationSnapshot, notify: Bool) {
+    private func processKomens(_ messages: [KomensMessage], snapshot: inout NotificationSnapshot, notify: Bool) -> [PendingNotification] {
         let allIds = Set(messages.map(\.id))
         guard let existing = snapshot.seenKomensIds else {
             snapshot.seenKomensIds = allIds
-            return
+            return []
         }
 
         let newMessages = messages.filter { !existing.contains($0.id) && $0.read != true }
         snapshot.seenKomensIds = existing.union(allIds)
 
-        guard notify, !newMessages.isEmpty else { return }
+        guard notify, !newMessages.isEmpty else { return [] }
 
+        var notifications: [PendingNotification] = []
         if newMessages.count <= 3 {
             for message in newMessages {
                 let sender = message.sender?.name?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -502,42 +653,44 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 let preview = Self.previewText(fromHTML: message.text)
                 let body = preview.isEmpty ? (subtitle.isEmpty ? "Máte novou zprávu v Komens." : subtitle) : preview
 
-                postNotification(
+                notifications.append(PendingNotification(
                     identifier: "baki.komens.\(message.id)",
                     title: title,
                     subtitle: preview.isEmpty ? nil : (subtitle.isEmpty ? nil : subtitle),
                     body: body,
                     threadIdentifier: "komens",
                     route: .komens
-                )
+                ))
             }
         } else {
             let senders = Array(Set(newMessages.compactMap { $0.sender?.name ?? $0.relevantName })).prefix(3)
             let body = senders.isEmpty
                 ? "Máte \(newMessages.count) nových zpráv v Komens."
                 : "Od: \(senders.joined(separator: ", "))"
-            postNotification(
+            notifications.append(PendingNotification(
                 identifier: "baki.komens.batch.\(Int(Date().timeIntervalSince1970))",
                 title: "Nové zprávy Komens (\(newMessages.count))",
                 body: body,
                 threadIdentifier: "komens",
                 route: .komens
-            )
+            ))
         }
+        return notifications
     }
 
-    private func processNoticeboard(_ messages: [KomensMessage], snapshot: inout NotificationSnapshot, notify: Bool) {
+    private func processNoticeboard(_ messages: [KomensMessage], snapshot: inout NotificationSnapshot, notify: Bool) -> [PendingNotification] {
         let allIds = Set(messages.map(\.id))
         guard let existing = snapshot.seenNoticeboardIds else {
             snapshot.seenNoticeboardIds = allIds
-            return
+            return []
         }
 
         let newMessages = messages.filter { !existing.contains($0.id) }
         snapshot.seenNoticeboardIds = existing.union(allIds)
 
-        guard notify, !newMessages.isEmpty else { return }
+        guard notify, !newMessages.isEmpty else { return [] }
 
+        var notifications: [PendingNotification] = []
         if newMessages.count <= 3 {
             for message in newMessages {
                 let sender = message.sender?.name?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -548,27 +701,28 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 let preview = Self.previewText(fromHTML: message.text)
                 let body = preview.isEmpty ? (subtitle.isEmpty ? "Na nástěnce přibyla nová zpráva." : subtitle) : preview
 
-                postNotification(
+                notifications.append(PendingNotification(
                     identifier: "baki.noticeboard.\(message.id)",
                     title: title,
                     subtitle: preview.isEmpty ? nil : (subtitle.isEmpty ? nil : subtitle),
                     body: body,
                     threadIdentifier: "noticeboard",
                     route: .noticeboard
-                )
+                ))
             }
         } else {
-            postNotification(
+            notifications.append(PendingNotification(
                 identifier: "baki.noticeboard.batch.\(Int(Date().timeIntervalSince1970))",
                 title: "Nástěnka (\(newMessages.count) nových)",
                 body: "Na nástěnce přibyly nové příspěvky.",
                 threadIdentifier: "noticeboard",
                 route: .noticeboard
-            )
+            ))
         }
+        return notifications
     }
 
-    private func processTimetable(_ responses: [TimetableResponse], snapshot: inout NotificationSnapshot, notify: Bool) {
+    private func processTimetable(_ responses: [TimetableResponse], snapshot: inout NotificationSnapshot, notify: Bool) -> [PendingNotification] {
         let todayKey = Self.dayKey(for: Date())
         let yesterdayKey = Self.dayKey(for: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
 
@@ -591,7 +745,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             }
             snapshot.timetableDays = Self.prunedDays(initialDays, minDayKey: yesterdayKey)
             snapshot.notifiedChangeKeys = Self.prunedChangeKeys(changeKeys, minDayKey: yesterdayKey)
-            return
+            return []
         }
 
         var mergedDays = previousDays
@@ -629,53 +783,51 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         snapshot.timetableDays = Self.prunedDays(mergedDays, minDayKey: yesterdayKey)
         snapshot.notifiedChangeKeys = Self.prunedChangeKeys(changeKeys, minDayKey: yesterdayKey)
 
-        guard notify, !changedNotifications.isEmpty else { return }
+        guard notify, !changedNotifications.isEmpty else { return [] }
 
+        var notifications: [PendingNotification] = []
         if changedNotifications.count <= 3 {
             for item in changedNotifications {
                 let dateLabel = Self.formattedDayLabel(forDayKey: item.dayKey)
-                postNotification(
+                notifications.append(PendingNotification(
                     identifier: "baki.timetable.\(item.dayKey).\(Int(Date().timeIntervalSince1970))",
                     title: "Změna v rozvrhu · \(dateLabel)",
                     body: item.summary,
                     threadIdentifier: "timetable",
                     route: .timetable
-                )
+                ))
             }
         } else {
             let labels = changedNotifications.prefix(3).map { Self.formattedDayLabel(forDayKey: $0.dayKey) }
-            postNotification(
+            notifications.append(PendingNotification(
                 identifier: "baki.timetable.batch.\(Int(Date().timeIntervalSince1970))",
                 title: "Změny v rozvrhu (\(changedNotifications.count) dnů)",
                 body: "Aktualizovány dny: \(labels.joined(separator: ", "))",
                 threadIdentifier: "timetable",
                 route: .timetable
-            )
+            ))
         }
+        return notifications
     }
 
     // MARK: - UNUserNotificationCenter Posting & Delegate
 
-    private func postNotification(
-        identifier: String,
-        title: String,
-        subtitle: String? = nil,
-        body: String,
-        threadIdentifier: String,
-        route: NotificationRoute
-    ) {
+    private func postNotification(_ item: PendingNotification) async {
         let content = UNMutableNotificationContent()
-        content.title = title
-        if let subtitle, !subtitle.isEmpty {
+        content.title = item.title
+        if let subtitle = item.subtitle, !subtitle.isEmpty {
             content.subtitle = subtitle
         }
-        content.body = body
+        content.body = item.body
         content.sound = .default
-        content.threadIdentifier = threadIdentifier
-        content.userInfo = ["route": route.rawValue]
+        content.threadIdentifier = item.threadIdentifier
+        content.userInfo = ["route": item.route.rawValue]
+        #if os(iOS)
+        content.interruptionLevel = .active
+        #endif
 
-        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        let request = UNNotificationRequest(identifier: item.identifier, content: content, trigger: nil)
+        try? await UNUserNotificationCenter.current().add(request)
     }
 
     nonisolated func userNotificationCenter(

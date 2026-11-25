@@ -37,6 +37,18 @@ struct CredentialStorage {
         set { set(newValue, forKey: "refreshToken") }
     }
 
+    static var tokenExpiresAt: Date? {
+        get {
+            let ts = defaults?.double(forKey: "tokenExpiresAt") ?? UserDefaults.standard.double(forKey: "tokenExpiresAt")
+            return ts > 0 ? Date(timeIntervalSince1970: ts) : nil
+        }
+        set {
+            let ts = newValue?.timeIntervalSince1970 ?? 0
+            defaults?.set(ts, forKey: "tokenExpiresAt")
+            UserDefaults.standard.set(ts, forKey: "tokenExpiresAt")
+        }
+    }
+
     static var hasValidSession: Bool {
         !baseURL.isEmpty && (!bearer.isEmpty || !refreshToken.isEmpty)
     }
@@ -68,6 +80,8 @@ struct CredentialStorage {
         defaults?.removeObject(forKey: "refreshToken")
         defaults?.removeObject(forKey: "username")
         defaults?.removeObject(forKey: "cachedTimetable")
+        defaults?.removeObject(forKey: "tokenExpiresAt")
+        UserDefaults.standard.removeObject(forKey: "tokenExpiresAt")
         keychain.delete("baseURL")
         keychain.delete("bearer")
         keychain.delete("refreshToken")
@@ -172,9 +186,31 @@ final class BakiClient {
         CredentialStorage.username = username
         CredentialStorage.bearer = accessToken
         CredentialStorage.refreshToken = refreshToken
+        if let expiresIn = json["expires_in"] as? TimeInterval, expiresIn > 0 {
+            CredentialStorage.tokenExpiresAt = Date(timeIntervalSinceNow: expiresIn)
+        } else if let expiresInInt = json["expires_in"] as? Int, expiresInInt > 0 {
+            CredentialStorage.tokenExpiresAt = Date(timeIntervalSinceNow: TimeInterval(expiresInInt))
+        }
     }
 
     private var refreshTask: Task<Bool, Never>?
+
+    /// Proactively refreshes the access token if it is missing or close to expiring,
+    /// avoiding multiple concurrent 401 retries during background checks.
+    func ensureFreshSession() async {
+        guard CredentialStorage.hasValidSession else { return }
+        let needsRefresh: Bool
+        if CredentialStorage.bearer.isEmpty {
+            needsRefresh = true
+        } else if let expiresAt = CredentialStorage.tokenExpiresAt {
+            needsRefresh = expiresAt.timeIntervalSinceNow < 90
+        } else {
+            needsRefresh = false
+        }
+        if needsRefresh {
+            _ = await refreshSession()
+        }
+    }
 
     func refreshSession() async -> Bool {
         if let refreshTask {
@@ -225,16 +261,26 @@ final class BakiClient {
             if let newRefresh = json["refresh_token"] as? String, !newRefresh.isEmpty {
                 CredentialStorage.refreshToken = newRefresh
             }
+            if let expiresIn = json["expires_in"] as? TimeInterval, expiresIn > 0 {
+                CredentialStorage.tokenExpiresAt = Date(timeIntervalSinceNow: expiresIn)
+            } else if let expiresInInt = json["expires_in"] as? Int, expiresInInt > 0 {
+                CredentialStorage.tokenExpiresAt = Date(timeIntervalSinceNow: TimeInterval(expiresInInt))
+            }
             return true
         } catch {
             return false
         }
     }
 
-    func fetchTimetable(date: Date? = nil, updatesCache: Bool = true, recordSnapshot: Bool = true) async throws -> TimetableResponse {
+    func fetchTimetable(
+        date: Date? = nil,
+        updatesCache: Bool = true,
+        recordSnapshot: Bool = true,
+        timeout: TimeInterval? = nil
+    ) async throws -> TimetableResponse {
         let dateStr = BakiDate.string(from: date ?? Date())
         let path = "/api/3/timetable/actual?date=\(dateStr)"
-        let data = try await performAuthorizedRequest(path: path, method: "GET")
+        let data = try await performAuthorizedRequest(path: path, method: "GET", timeout: timeout)
 
         let response = try JSONDecoder().decode(TimetableResponse.self, from: data)
 
@@ -252,9 +298,9 @@ final class BakiClient {
         return response
     }
 
-    func fetchMarks(recordSnapshot: Bool = true) async throws -> MarksResponse {
+    func fetchMarks(recordSnapshot: Bool = true, timeout: TimeInterval? = nil) async throws -> MarksResponse {
         let path = "/api/3/marks"
-        let data = try await performAuthorizedRequest(path: path, method: "GET")
+        let data = try await performAuthorizedRequest(path: path, method: "GET", timeout: timeout)
         let response = try JSONDecoder().decode(MarksResponse.self, from: data)
         #if os(iOS)
         if recordSnapshot {
@@ -309,9 +355,13 @@ final class BakiClient {
         case noticeboard = "noticeboard"
     }
 
-    func fetchMessages(type: MessageType, recordSnapshot: Bool = true) async throws -> [KomensMessage] {
+    func fetchMessages(
+        type: MessageType,
+        recordSnapshot: Bool = true,
+        timeout: TimeInterval? = nil
+    ) async throws -> [KomensMessage] {
         let path = "/api/3/komens/messages/\(type.rawValue)"
-        let data = try await performAuthorizedRequest(path: path, method: "POST")
+        let data = try await performAuthorizedRequest(path: path, method: "POST", timeout: timeout)
         let response = try JSONDecoder().decode(KomensResponse.self, from: data)
         let messages = response.messages ?? []
 
@@ -394,7 +444,8 @@ final class BakiClient {
         path: String,
         method: String,
         body: Data? = nil,
-        contentType: String? = nil
+        contentType: String? = nil,
+        timeout: TimeInterval? = nil
     ) async throws -> Data {
         let base = CredentialStorage.baseURL
         guard let url = URL(string: base + path) else {
@@ -404,6 +455,9 @@ final class BakiClient {
         func makeRequest() -> URLRequest {
             var request = URLRequest(url: url)
             request.httpMethod = method
+            if let timeout {
+                request.timeoutInterval = timeout
+            }
             request.setValue("Bearer \(CredentialStorage.bearer)", forHTTPHeaderField: "Authorization")
             if let contentType {
                 request.setValue(contentType, forHTTPHeaderField: "Content-Type")

@@ -38,8 +38,12 @@ struct BakiPhoneApp: App {
                 .onChange(of: scenePhase) { _, newPhase in
                     switch newPhase {
                     case .background:
+                        NotificationService.shared.stopForegroundPolling()
                         NotificationService.shared.scheduleBackgroundRefresh()
+                    case .inactive:
+                        NotificationService.shared.stopForegroundPolling()
                     case .active:
+                        NotificationService.shared.startForegroundPolling()
                         Task {
                             await NotificationService.shared.refreshAuthorizationStatus()
                             await NotificationService.shared.checkOnForegroundIfStale()

@@ -43,6 +43,10 @@ struct RootView<Main: View>: View {
         .task {
             for await _ in NotificationCenter.default.notifications(named: .bakiDidSignIn) {
                 authState = .authenticated
+                #if os(iOS)
+                NotificationService.shared.scheduleBackgroundRefresh()
+                NotificationService.shared.startForegroundPolling()
+                #endif
             }
         }
     }
@@ -514,6 +518,17 @@ struct SettingsScreen: View {
                     set: { notificationService.timetableEnabled = $0 }
                 )) {
                     Label("Změny v rozvrhu", systemImage: "calendar")
+                }
+
+                if !notificationService.isBackgroundRefreshAvailable {
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Label("Obnovení na pozadí je vypnuto · Otevřít Nastavení", systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                    }
                 }
 
                 Button {
