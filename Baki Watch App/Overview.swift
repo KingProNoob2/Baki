@@ -230,14 +230,16 @@ struct OverviewTimetableCardView: View {
 struct TimetableCarouselView: View {
     let lessons: [NextLesson]
     @Environment(\.scenePhase) private var scenePhase
-    @State private var selectedIndex: Int
-    @State private var scrollPosition: ScrollPosition
+    @State private var selectedIndex: Int = 0
+    @State private var targetIndex: Int
+    @State private var isSettled: Bool
+    @State private var settledKey: [String] = []
 
     init(lessons: [NextLesson]) {
         self.lessons = lessons
         let initial = Self.initialIndex(in: lessons)
-        _selectedIndex = State(initialValue: initial)
-        _scrollPosition = State(initialValue: ScrollPosition(id: initial))
+        _targetIndex = State(initialValue: initial)
+        _isSettled = State(initialValue: initial == 0)
     }
 
     private static func initialIndex(in lessons: [NextLesson]) -> Int {
@@ -258,10 +260,12 @@ struct TimetableCarouselView: View {
     }
 
     var body: some View {
+        let lessonKeys = lessons.map(\.id)
         VStack(spacing: 4) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 0) {
-                    ForEach(Array(lessons.enumerated()), id: \.element.id) { index, lesson in
+            ZStack {
+                TabView(selection: $selectedIndex) {
+                    ForEach(lessons.indices, id: \.self) { index in
+                        let lesson = lessons[index]
                         NavigationLink {
                             LessonDetailView(
                                 atom: lesson.atom,
@@ -275,37 +279,60 @@ struct TimetableCarouselView: View {
                             OverviewTimetableCardView(lesson: lesson)
                         }
                         .buttonStyle(.plain)
-                        .containerRelativeFrame(.horizontal)
-                        .id(index)
+                        .tag(index)
                     }
                 }
-                .scrollTargetLayout()
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .opacity(isSettled ? 1 : 0)
+
+                if !isSettled, lessons.indices.contains(targetIndex) {
+                    let lesson = lessons[targetIndex]
+                    NavigationLink {
+                        LessonDetailView(
+                            atom: lesson.atom,
+                            day: lesson.day,
+                            subject: lesson.subject,
+                            teacher: lesson.teacher,
+                            room: lesson.room,
+                            hour: lesson.hour
+                        )
+                    } label: {
+                        OverviewTimetableCardView(lesson: lesson)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .scrollIndicators(.hidden)
-            .scrollTargetBehavior(.paging)
-            .scrollPosition($scrollPosition)
             .frame(height: 82)
 
-            CarouselPageIndicator(count: lessons.count, selectedIndex: selectedIndex)
+            CarouselPageIndicator(count: lessons.count, selectedIndex: isSettled ? selectedIndex : targetIndex)
         }
-        .onAppear {
-            scrollPosition.scrollTo(id: selectedIndex)
-        }
-        .onChange(of: scrollPosition.viewID(type: Int.self)) { _, newIndex in
-            if scrollPosition.isPositionedByUser, let newIndex, lessons.indices.contains(newIndex) {
-                selectedIndex = newIndex
-            }
-        }
-        .onChange(of: lessons.map(\.id)) {
+        .task(id: lessonKeys) {
+            guard settledKey != lessonKeys else { return }
+            settledKey = lessonKeys
+
             let target = Self.initialIndex(in: lessons)
+            targetIndex = target
+            if target == 0 {
+                selectedIndex = 0
+                isSettled = true
+                return
+            }
+
+            isSettled = false
+            selectedIndex = 0
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
             selectedIndex = target
-            scrollPosition.scrollTo(id: target)
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            isSettled = true
         }
         .onChange(of: scenePhase) {
             if scenePhase == .active {
                 let target = Self.initialIndex(in: lessons)
+                targetIndex = target
                 selectedIndex = target
-                scrollPosition.scrollTo(id: target)
+                isSettled = true
             }
         }
     }
@@ -474,41 +501,28 @@ struct HomeworksCarouselView: View {
     let homeworks: [Homework]
     let store: HomeworkStore
     @State private var selectedIndex: Int = 0
-    @State private var scrollPosition = ScrollPosition(id: 0)
 
     var body: some View {
         VStack(spacing: 4) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 0) {
-                    ForEach(Array(homeworks.enumerated()), id: \.element.id) { index, homework in
-                        NavigationLink {
-                            HomeworkDetailView(store: store, homeworkID: homework.id)
-                        } label: {
-                            OverviewHomeworkCardView(homework: homework)
-                        }
-                        .buttonStyle(.plain)
-                        .containerRelativeFrame(.horizontal)
-                        .id(index)
+            TabView(selection: $selectedIndex) {
+                ForEach(homeworks.indices, id: \.self) { index in
+                    let homework = homeworks[index]
+                    NavigationLink {
+                        HomeworkDetailView(store: store, homeworkID: homework.id)
+                    } label: {
+                        OverviewHomeworkCardView(homework: homework)
                     }
+                    .buttonStyle(.plain)
+                    .tag(index)
                 }
-                .scrollTargetLayout()
             }
-            .scrollIndicators(.hidden)
-            .scrollTargetBehavior(.paging)
-            .scrollPosition($scrollPosition)
+            .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(height: 82)
+            .onChange(of: homeworks.map(\.id)) {
+                selectedIndex = min(selectedIndex, max(0, homeworks.count - 1))
+            }
 
             CarouselPageIndicator(count: homeworks.count, selectedIndex: selectedIndex)
-        }
-        .onChange(of: scrollPosition.viewID(type: Int.self)) { _, newIndex in
-            if scrollPosition.isPositionedByUser, let newIndex, homeworks.indices.contains(newIndex) {
-                selectedIndex = newIndex
-            }
-        }
-        .onChange(of: homeworks.map(\.id)) {
-            let clamped = min(selectedIndex, max(0, homeworks.count - 1))
-            selectedIndex = clamped
-            scrollPosition.scrollTo(id: clamped)
         }
     }
 }
