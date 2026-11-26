@@ -83,17 +83,12 @@ struct LoginView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 8) {
-                Text("Username and Password")
-                    .font(.headline)
-
-                TextField("Username", text: $username)
-                    .padding()
+                TextField("Uživatelské jméno", text: $username)
                     .tint(.blue)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
 
-                SecureField("Password", text: $password)
-                    .padding()
+                SecureField("Heslo", text: $password)
                     .tint(.blue)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -106,17 +101,23 @@ struct LoginView: View {
                         .padding(.vertical, 2)
                 }
 
-                Button("Login") {
+                Button {
                     Task {
                         await login()
+                    }
+                } label: {
+                    if isLoggingIn {
+                        ProgressView()
+                    } else {
+                        Text("Přihlásit se")
                     }
                 }
                 .tint(.blue)
                 .disabled(isLoggingIn)
-                .opacity(isLoggingIn ? 0.6 : 1.0)
             }
-            .padding()
+            .padding(.horizontal)
         }
+        .navigationTitle("Přihlášení")
     }
 
     private func login() async {

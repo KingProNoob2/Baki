@@ -139,9 +139,14 @@ struct PredictorSubjectRow: View {
             }
             Spacer(minLength: 8)
             if !average.isEmpty {
+                let color = MarkColor.forAverage(average)
                 Text("Ø \(average)")
                     .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(MarkColor.forAverage(average))
+                    .foregroundStyle(color)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(color.opacity(0.18), in: Capsule())
+                    .accessibilityLabel("Průměr \(average)")
             }
         }
         .padding(.vertical, 4)

@@ -231,10 +231,13 @@ struct TimetableCarouselView: View {
     let lessons: [NextLesson]
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedIndex: Int
+    @State private var scrollPosition: ScrollPosition
 
     init(lessons: [NextLesson]) {
         self.lessons = lessons
-        _selectedIndex = State(initialValue: Self.initialIndex(in: lessons))
+        let initial = Self.initialIndex(in: lessons)
+        _selectedIndex = State(initialValue: initial)
+        _scrollPosition = State(initialValue: ScrollPosition(id: initial))
     }
 
     private static func initialIndex(in lessons: [NextLesson]) -> Int {
@@ -256,35 +259,53 @@ struct TimetableCarouselView: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            TabView(selection: $selectedIndex) {
-                ForEach(Array(lessons.enumerated()), id: \.element.id) { index, lesson in
-                    NavigationLink {
-                        LessonDetailView(
-                            atom: lesson.atom,
-                            day: lesson.day,
-                            subject: lesson.subject,
-                            teacher: lesson.teacher,
-                            room: lesson.room,
-                            hour: lesson.hour
-                        )
-                    } label: {
-                        OverviewTimetableCardView(lesson: lesson)
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(Array(lessons.enumerated()), id: \.element.id) { index, lesson in
+                        NavigationLink {
+                            LessonDetailView(
+                                atom: lesson.atom,
+                                day: lesson.day,
+                                subject: lesson.subject,
+                                teacher: lesson.teacher,
+                                room: lesson.room,
+                                hour: lesson.hour
+                            )
+                        } label: {
+                            OverviewTimetableCardView(lesson: lesson)
+                        }
+                        .buttonStyle(.plain)
+                        .containerRelativeFrame(.horizontal)
+                        .id(index)
                     }
-                    .buttonStyle(.plain)
-                    .tag(index)
                 }
+                .scrollTargetLayout()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.paging)
+            .scrollPosition($scrollPosition)
             .frame(height: 82)
 
             CarouselPageIndicator(count: lessons.count, selectedIndex: selectedIndex)
         }
+        .onAppear {
+            scrollPosition.scrollTo(id: selectedIndex)
+        }
+        .onChange(of: scrollPosition.viewID(type: Int.self)) { _, newIndex in
+            if scrollPosition.isPositionedByUser, let newIndex, lessons.indices.contains(newIndex) {
+                selectedIndex = newIndex
+            }
+        }
         .onChange(of: lessons.map(\.id)) {
-            selectedIndex = Self.initialIndex(in: lessons)
+            let target = Self.initialIndex(in: lessons)
+            selectedIndex = target
+            scrollPosition.scrollTo(id: target)
         }
         .onChange(of: scenePhase) {
             if scenePhase == .active {
-                selectedIndex = Self.initialIndex(in: lessons)
+                let target = Self.initialIndex(in: lessons)
+                selectedIndex = target
+                scrollPosition.scrollTo(id: target)
             }
         }
     }
@@ -359,6 +380,135 @@ struct MessagesCarouselView: View {
             .frame(height: 82)
 
             CarouselPageIndicator(count: messages.count, selectedIndex: selectedIndex)
+        }
+    }
+}
+
+struct OverviewHomeworkCardView: View {
+    let homework: Homework
+
+    private func dueInfo() -> (text: String, color: Color)? {
+        guard let due = homework.dueDate else { return nil }
+        let info = DueText.describe(due, isPending: !homework.isDone && !homework.isClosed)
+        let color: Color = info.color == .purple ? .secondary : info.color
+        return (info.text, color)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 4) {
+                Text("Úkol")
+                    .font(.caption2)
+                    .bold()
+                    .foregroundStyle(.green)
+                    .lineLimit(1)
+
+                Spacer()
+
+                if let due = dueInfo() {
+                    Text(due.text)
+                        .font(.caption2)
+                        .bold()
+                        .foregroundStyle(due.color)
+                        .lineLimit(1)
+                }
+            }
+
+            Text(homework.subjectName)
+                .font(.headline)
+                .bold()
+                .lineLimit(1)
+
+            let preview = homework.contentText.replacingOccurrences(of: "\n", with: " ")
+            Text(preview.isEmpty ? "Bez textu" : preview)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 82)
+        .background(Color.green.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+struct OverviewHomeworkDoneCardView: View {
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Úkoly")
+                    .font(.caption2)
+                    .bold()
+                    .foregroundStyle(.green)
+                    .lineLimit(1)
+
+                Text("Vše hotovo")
+                    .font(.headline)
+                    .bold()
+                    .lineLimit(1)
+
+                Text("Žádné nesplněné úkoly")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 4)
+
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title2)
+                .foregroundStyle(.green)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 82)
+        .background(Color.green.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+struct HomeworksCarouselView: View {
+    let homeworks: [Homework]
+    let store: HomeworkStore
+    @State private var selectedIndex: Int = 0
+    @State private var scrollPosition = ScrollPosition(id: 0)
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(Array(homeworks.enumerated()), id: \.element.id) { index, homework in
+                        NavigationLink {
+                            HomeworkDetailView(store: store, homeworkID: homework.id)
+                        } label: {
+                            OverviewHomeworkCardView(homework: homework)
+                        }
+                        .buttonStyle(.plain)
+                        .containerRelativeFrame(.horizontal)
+                        .id(index)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.paging)
+            .scrollPosition($scrollPosition)
+            .frame(height: 82)
+
+            CarouselPageIndicator(count: homeworks.count, selectedIndex: selectedIndex)
+        }
+        .onChange(of: scrollPosition.viewID(type: Int.self)) { _, newIndex in
+            if scrollPosition.isPositionedByUser, let newIndex, homeworks.indices.contains(newIndex) {
+                selectedIndex = newIndex
+            }
+        }
+        .onChange(of: homeworks.map(\.id)) {
+            let clamped = min(selectedIndex, max(0, homeworks.count - 1))
+            selectedIndex = clamped
+            scrollPosition.scrollTo(id: clamped)
         }
     }
 }
@@ -507,15 +657,61 @@ struct MessagesCarouselSkeleton: View {
     }
 }
 
+struct HomeworksCarouselSkeleton: View {
+    var body: some View {
+        VStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text("Úkol")
+                        .font(.caption2)
+                        .bold()
+                    Spacer()
+                    Text("Zítra")
+                        .font(.caption2)
+                }
+
+                Text("Matematika")
+                    .font(.headline)
+                    .bold()
+
+                Text("Pracovní list str. 12")
+                    .font(.caption2)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 82)
+            .background(Color.green.opacity(0.15))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .skeletonPulse()
+
+            HStack(spacing: 3) {
+                Capsule()
+                    .fill(Color.primary.opacity(0.25))
+                    .frame(width: 10, height: 2)
+                ForEach(0..<2, id: \.self) { _ in
+                    Capsule()
+                        .fill(Color.primary.opacity(0.12))
+                        .frame(width: 3, height: 2)
+                }
+            }
+            .padding(.top, 1)
+            .skeletonPulse()
+        }
+    }
+}
+
 struct OverviewSkeleton: View {
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 10) {
+            VStack(spacing: 10) {
                 MarksCarouselSkeleton()
 
                 TimetableCarouselSkeleton()
 
                 MessagesCarouselSkeleton()
+
+                HomeworksCarouselSkeleton()
 
                 NavigationLink("Menu") {}
                     .skeletonPulse()
@@ -534,6 +730,7 @@ struct Overview: View {
     @State private var timetable: TimetableResponse?
     @State private var receivedMessages: [KomensMessage] = []
     @State private var noticeMessages: [KomensMessage] = []
+    @State private var homeworkStore = HomeworkStore()
 
     @State private var latestMarks: [OverviewMark] = []
     @State private var latestMessages: [KomensMessage] = []
@@ -550,10 +747,20 @@ struct Overview: View {
         case timetable(TimetableResponse?)
         case received([KomensMessage]?)
         case notices([KomensMessage]?)
+        case homeworks([Homework]?)
     }
 
     private var hasAnyData: Bool {
-        timetable != nil || !subjects.isEmpty || !receivedMessages.isEmpty || !noticeMessages.isEmpty
+        timetable != nil || !subjects.isEmpty || !receivedMessages.isEmpty || !noticeMessages.isEmpty || homeworkStore.hasLoaded
+    }
+
+    private var pendingHomeworks: [Homework] {
+        Array(
+            homeworkStore.homeworks
+                .filter { !$0.isDone && !$0.isClosed }
+                .sorted { ($0.dueDate ?? .distantFuture) < ($1.dueDate ?? .distantFuture) }
+                .prefix(5)
+        )
     }
 
     private static func makeLatestMarks(from subjects: [SubjectMarks]) -> [OverviewMark] {
@@ -681,7 +888,7 @@ struct Overview: View {
                 OverviewSkeleton()
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 10) {
+                    VStack(spacing: 10) {
                         if !latestMarks.isEmpty {
                             MarksCarouselView(marks: latestMarks)
                         } else if isLoading && subjects.isEmpty {
@@ -698,6 +905,19 @@ struct Overview: View {
                             MessagesCarouselView(messages: latestMessages)
                         } else if isLoading && receivedMessages.isEmpty && noticeMessages.isEmpty {
                             MessagesCarouselSkeleton()
+                        }
+
+                        if !pendingHomeworks.isEmpty {
+                            HomeworksCarouselView(homeworks: pendingHomeworks, store: homeworkStore)
+                        } else if homeworkStore.hasLoaded {
+                            NavigationLink {
+                                HomeworkScreen()
+                            } label: {
+                                OverviewHomeworkDoneCardView()
+                            }
+                            .buttonStyle(.plain)
+                        } else if isLoading {
+                            HomeworksCarouselSkeleton()
                         }
 
                         if loadFailed && !isLoading {
@@ -769,6 +989,13 @@ struct Overview: View {
             group.addTask { .timetable(try? await BakiClient.shared.fetchTimetable()) }
             group.addTask { .received(try? await BakiClient.shared.fetchMessages(type: .received)) }
             group.addTask { .notices(try? await BakiClient.shared.fetchMessages(type: .noticeboard)) }
+            group.addTask {
+                let calendar = Calendar.current
+                let today = calendar.startOfDay(for: Date())
+                let from = calendar.date(byAdding: .day, value: -30, to: today) ?? today
+                let to = calendar.date(byAdding: .day, value: 60, to: today) ?? today
+                return .homeworks(try? await BakiClient.shared.fetchHomeworks(from: from, to: to))
+            }
 
             for await result in group {
                 switch result {
@@ -793,6 +1020,12 @@ struct Overview: View {
                 case .notices(let messages):
                     notices = messages
                     pendingMessageResults -= 1
+
+                case .homeworks(let fetched):
+                    guard let fetched else { break }
+                    anySucceeded = true
+                    homeworkStore.homeworks = fetched
+                    homeworkStore.hasLoaded = true
                 }
 
                 if pendingMessageResults == 0 {

@@ -146,7 +146,7 @@ private struct HomeworkRow: View {
     }
 }
 
-private struct DueText: View {
+struct DueText: View {
     let homework: Homework
 
     var body: some View {

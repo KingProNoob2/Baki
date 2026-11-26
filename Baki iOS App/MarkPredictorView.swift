@@ -89,14 +89,21 @@ struct MarkPredictorView: View {
                 }
 
                 if let displayed = displayedAverage {
+                    let color = MarkColor.forAverage(displayed)
                     Text("Ø \(displayed)")
-                        .font(.system(size: 44, weight: .bold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(MarkColor.forAverage(displayed))
+                        .font(.system(size: 40, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(color)
                         .contentTransition(.numericText())
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 10)
+                        .background(color.opacity(0.18), in: Capsule())
                 } else {
                     Text("–")
-                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .font(.system(size: 40, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 10)
+                        .background(Color.secondary.opacity(0.15), in: Capsule())
                 }
 
                 Text(guesses.isEmpty ? "Aktuální průměr" : "Předpokládaný průměr")
@@ -140,12 +147,12 @@ struct MarkPredictorView: View {
             }
 
             Stepper(value: $newMarkWeight, in: 1...10) {
-                LabeledContent {
+                HStack {
+                    Label("Váha", systemImage: "scalemass")
+                    Spacer()
                     Text("\(newMarkWeight)")
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
-                } label: {
-                    Label("Váha", systemImage: "scalemass")
                 }
             }
         } header: {
@@ -164,9 +171,12 @@ struct MarkPredictorView: View {
                     guesses.append(Guess(text: selectedGrade, weight: newMarkWeight))
                 }
             } label: {
-                Label("Přidat známku \(selectedGrade)", systemImage: "plus")
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 6) {
+                    Image(systemName: "plus")
+                    Text("Přidat známku \(selectedGrade)")
+                }
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(.glassProminent)
             .controlSize(.large)

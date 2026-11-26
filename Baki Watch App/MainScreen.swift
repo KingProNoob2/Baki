@@ -11,30 +11,28 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            switch authState {
-            case .checking:
-                OverviewSkeleton()
-                    .task {
-                        await checkAuth()
-                    }
+            NavigationStack {
+                switch authState {
+                case .checking:
+                    OverviewSkeleton()
+                        .task {
+                            await checkAuth()
+                        }
 
-            case .authenticated:
-                Overview()
+                case .authenticated:
+                    Overview()
 
-            case .unauthenticated:
-                SchoolSelectScreen()
+                case .unauthenticated:
+                    SchoolSelectScreen()
+                }
             }
+            .id(authState)
         }
-        .id(authState)
-        .task {
-            for await _ in NotificationCenter.default.notifications(named: .bakiDidSignOut) {
-                authState = .unauthenticated
-            }
+        .onReceive(NotificationCenter.default.publisher(for: .bakiDidSignOut)) { _ in
+            authState = .unauthenticated
         }
-        .task {
-            for await _ in NotificationCenter.default.notifications(named: .bakiDidSignIn) {
-                authState = .authenticated
-            }
+        .onReceive(NotificationCenter.default.publisher(for: .bakiDidSignIn)) { _ in
+            authState = .authenticated
         }
     }
 

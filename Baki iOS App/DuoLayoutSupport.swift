@@ -199,6 +199,22 @@ extension View {
         #endif
     }
 
+    /// Clips a nested horizontal pager to its safe-area layout bounds on iPhone Duo so adjacent
+    /// pages never bleed underneath the vertical toolbar/tab bar or across a split divider.
+    /// Leaves all non-Duo iPhones completely untouched.
+    @ViewBuilder
+    func duoClipHorizontalPager() -> some View {
+        #if os(iOS)
+        if #available(iOS 27.1, *) {
+            modifier(DuoHorizontalPagerClipModifier27_1())
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+
     /// Prefers keeping the tab bar visible on iPhone Duo's vertical bar when vertical space is constrained.
     @ViewBuilder
     func duoPrefersTabBarCompression() -> some View {
@@ -255,6 +271,30 @@ enum DuoSheetPlacement {
 }
 
 #if os(iOS)
+@available(iOS 27.1, *)
+private struct DuoHorizontalPagerClipModifier27_1: ViewModifier {
+    @Environment(\.toolbarVerticalEdge) private var toolbarVerticalEdge
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    private var isDuoContext: Bool {
+        toolbarVerticalEdge != nil || DuoEnvironment.isInnerDisplay(
+            horizontalSizeClass: horizontalSizeClass,
+            verticalSizeClass: verticalSizeClass
+        )
+    }
+
+    func body(content: Content) -> some View {
+        if isDuoContext {
+            content
+                .scrollClipDisabled(false)
+                .clipShape(Rectangle())
+        } else {
+            content
+        }
+    }
+}
+
 private struct DuoSheetPlacementModifier: ViewModifier {
     let placement: DuoSheetPlacement
 

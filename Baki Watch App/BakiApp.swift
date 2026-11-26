@@ -7,9 +7,7 @@ struct Baki_Watch_AppApp: App {
 
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                RootView()
-            }
+            RootView()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {

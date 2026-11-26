@@ -288,6 +288,7 @@ struct TimetableScreen: View {
             .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
             .scrollPosition($dayScrollPosition)
             .frame(height: dayHeights[activeWeekday], alignment: .top)
+            .duoClipHorizontalPager()
             .padding(.top, 8)
             .padding(.bottom, 76)
         }
