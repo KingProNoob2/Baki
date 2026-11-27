@@ -80,6 +80,8 @@ struct AbsenceScreen: View {
 
     @State private var response: AbsenceResponse?
     @State private var isLoading = false
+    @State private var loaded = false
+    @State private var loadFailed = false
     @State private var mode: Mode = SavedMode.load("absence", default: .days)
 
     private var days: [AbsenceDay] {
@@ -96,14 +98,16 @@ struct AbsenceScreen: View {
 
     var body: some View {
         Group {
-            if response == nil && isLoading {
+            if response == nil && (!loaded || isLoading) {
                 ProgressView()
-            } else if response == nil {
+            } else if response == nil && loadFailed {
                 ContentUnavailableView {
                     Label("Absenci se nepodařilo načíst", systemImage: "exclamationmark.triangle")
                 } actions: {
                     Button("Zkusit znovu") { Task { await load() } }
                 }
+            } else if response == nil {
+                ProgressView()
             } else {
                 #if os(iOS)
                 DuoAdaptiveSplit(primaryRatio: 0.42) {
@@ -299,7 +303,8 @@ struct AbsenceScreen: View {
                     .foregroundStyle(color)
             }
 
-            ProgressView(value: Double(subject.base), total: Double(max(subject.lessonsCount, 1)))
+            let totalLessons = Double(max(subject.lessonsCount, 1))
+            ProgressView(value: min(Double(max(subject.base, 0)), totalLessons), total: totalLessons)
                 .tint(color)
 
             HStack(spacing: 12) {
@@ -321,9 +326,15 @@ struct AbsenceScreen: View {
 
     private func load() async {
         isLoading = true
-        defer { isLoading = false }
-        if let fetched = try? await BakiClient.shared.fetchAbsence() {
-            response = fetched
+        defer {
+            isLoading = false
+            loaded = true
+        }
+        do {
+            response = try await BakiClient.shared.fetchAbsence()
+            loadFailed = false
+        } catch {
+            if response == nil { loadFailed = true }
         }
     }
 }

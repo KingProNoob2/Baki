@@ -33,7 +33,7 @@ struct MacMessagesView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return messages }
         return messages.filter { message in
-            [message.sender?.name ?? message.relevantName, message.title, message.text]
+            [message.sender?.name ?? message.relevantName, message.title, message.plainText]
                 .contains { $0?.localizedStandardContains(query) == true }
         }
     }
@@ -143,8 +143,11 @@ struct MacMessagesView: View {
 
     private func load() async {
         isLoading = true
-        if let fetched = try? await BakiClient.shared.fetchMessages(type: type) {
-            messages = fetched
+        do {
+            messages = try await BakiClient.shared.fetchMessages(type: type)
+            loadFailed = false
+        } catch {
+            if messages.isEmpty { loadFailed = true }
         }
         isLoading = false
     }

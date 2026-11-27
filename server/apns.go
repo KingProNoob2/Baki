@@ -90,7 +90,7 @@ func (a *APNs) token() (string, error) {
 // errDeadToken means Apple says the device token is no longer valid and should be dropped.
 var errDeadToken = fmt.Errorf("device token is no longer valid")
 
-func (a *APNs) Send(d Device, title, body string) error {
+func (a *APNs) Send(d Device, title, body, route string) error {
 	jwt, err := a.token()
 	if err != nil {
 		return err
@@ -99,12 +99,18 @@ func (a *APNs) Send(d Device, title, body string) error {
 	if d.Sandbox {
 		host = "api.sandbox.push.apple.com"
 	}
-	payload, _ := json.Marshal(map[string]any{
-		"aps": map[string]any{
-			"alert": map[string]string{"title": title, "body": body},
-			"sound": "default",
-		},
-	})
+	aps := map[string]any{
+		"alert": map[string]string{"title": title, "body": body},
+		"sound": "default",
+	}
+	if route != "" {
+		aps["thread-id"] = route
+	}
+	root := map[string]any{"aps": aps}
+	if route != "" {
+		root["route"] = route
+	}
+	payload, _ := json.Marshal(root)
 	req, err := http.NewRequest("POST", "https://"+host+"/3/device/"+d.Token, bytes.NewReader(payload))
 	if err != nil {
 		return err

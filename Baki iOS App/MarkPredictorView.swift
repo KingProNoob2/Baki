@@ -334,7 +334,7 @@ struct MarkPredictorView: View {
     /// (two decimals, decimal comma). Nil until a guess is added or when no mark is numeric.
     private var predicted: String? {
         guard !guesses.isEmpty else { return nil }
-        let entries = item.marks.map { (Self.grade($0.displayText), $0.weight ?? 1) }
+        let entries = item.marks.map { (Self.markGrade($0), $0.weight ?? 1) }
             + guesses.map { (Self.grade($0.text), $0.weight) }
         let weighted = entries.compactMap { grade, weight in grade.map { ($0, Double(weight)) } }
         let totalWeight = weighted.reduce(0) { $0 + $1.1 }
@@ -343,12 +343,32 @@ struct MarkPredictorView: View {
         return average.formatted(.number.precision(.fractionLength(2)).locale(Locale(identifier: "cs_CZ")))
     }
 
-    /// Numeric value of a grade; a trailing minus counts as half a grade worse ("2-" = 2.5).
+    private static func markGrade(_ mark: Mark) -> Double? {
+        if let direct = grade(mark.displayText) {
+            return direct
+        }
+        if let calc = mark.calculatedMarkText {
+            return grade(calc)
+        }
+        return nil
+    }
+
+    /// Numeric value of a grade; a trailing minus counts as half a grade worse ("2-" = 2.5),
+    /// and modifiers like "*", "+", "!" map to the base grade.
     private static func grade(_ text: String) -> Double? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base = trimmed.hasSuffix("-") ? String(trimmed.dropLast()) : trimmed
-        guard let value = Double(base), (1...5).contains(value) else { return nil }
-        return trimmed.hasSuffix("-") ? value + 0.5 : value
+            .replacingOccurrences(of: ",", with: ".")
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.hasSuffix("-") {
+            guard let value = Double(trimmed.dropLast()), (1...5).contains(value) else { return nil }
+            return min(5, value + 0.5)
+        }
+        if let last = trimmed.last, "+*!".contains(last) {
+            guard let value = Double(trimmed.dropLast()), (1...5).contains(value) else { return nil }
+            return value
+        }
+        guard let value = Double(trimmed), (1...5).contains(value) else { return nil }
+        return value
     }
 
     private static func number(_ text: String) -> Double? {

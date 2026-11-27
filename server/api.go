@@ -49,7 +49,7 @@ func newAPI(cfg *Config, mgr *Manager) http.Handler {
 			return
 		}
 		// Check the login first so a typo is reported to the app right away.
-		if err := NewClient(req.SchoolURL, req.Username, req.Password).authenticate(); err != nil {
+		if err := NewClient(req.SchoolURL, req.Username, req.Password).authenticate(r.Context()); err != nil {
 			http.Error(w, "Bakaláři login failed", http.StatusForbidden)
 			return
 		}

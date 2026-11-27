@@ -20,8 +20,20 @@ final class PushService {
     private(set) var deviceToken: String?
 
     var serverURL: String {
-        get { CredentialStorage.get(Key.serverURL) }
-        set { CredentialStorage.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Key.serverURL) }
+        get { Self.normalizeURL(CredentialStorage.get(Key.serverURL)) }
+        set { CredentialStorage.set(Self.normalizeURL(newValue), forKey: Key.serverURL) }
+    }
+
+    private static func normalizeURL(_ raw: String) -> String {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return "" }
+        if !value.hasPrefix("http://") && !value.hasPrefix("https://") {
+            value = "https://" + value
+        }
+        while value.hasSuffix("/") {
+            value.removeLast()
+        }
+        return value
     }
 
     var apiKey: String {

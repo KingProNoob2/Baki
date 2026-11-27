@@ -26,6 +26,8 @@ struct MarksScreen: View {
     @State private var subjects: [SubjectMarks] = []
     @State private var recentMarks: [SubjectMark] = []
     @State private var isLoading: Bool = false
+    @State private var loaded: Bool = false
+    @State private var loadFailed: Bool = false
     @State private var expandedSubjects: Set<String> = []
     @AppStorage("savedMode_marks") private var storedMode: String = Mode.subjects.rawValue
 
@@ -35,8 +37,23 @@ struct MarksScreen: View {
 
     var body: some View {
         Group {
-            if subjects.isEmpty && isLoading {
+            if subjects.isEmpty && (!loaded || isLoading) {
                 MarksSkeleton()
+            } else if subjects.isEmpty && loadFailed {
+                VStack(spacing: 8) {
+                    Image(systemName: "wifi.exclamationmark")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                    Text("Známky se nepodařilo načíst")
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                    Button("Zkusit znovu") {
+                        Task { await loadMarks() }
+                    }
+                    .tint(.blue)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if subjects.isEmpty {
                 Text("Žádné známky")
                     .font(.footnote)
@@ -304,11 +321,18 @@ struct MarksScreen: View {
 
     private func loadMarks() async {
         isLoading = true
-        if let response = try? await BakiClient.shared.fetchMarks() {
+        defer {
+            isLoading = false
+            loaded = true
+        }
+        do {
+            let response = try await BakiClient.shared.fetchMarks()
             subjects = response.subjects.map(Self.sortedNewestFirst)
             recentMarks = Self.makeRecentMarks(from: response.subjects)
+            loadFailed = false
+        } catch {
+            if subjects.isEmpty { loadFailed = true }
         }
-        isLoading = false
     }
 }
 

@@ -246,9 +246,9 @@ struct MacTimetableView: View {
     }
 
     private func load(offset: Int) async {
-        let isCurrentWeek = offset == 0
-        let date = isCurrentWeek ? nil : TimetableScreen.weekInterval(for: offset)?.start
-        let response = try? await BakiClient.shared.fetchTimetable(date: date, updatesCache: isCurrentWeek)
+        let updatesCache = offset == TimetableScreen.todayWeekOffset
+        let date = offset == 0 ? nil : TimetableScreen.weekInterval(for: offset)?.start
+        let response = try? await BakiClient.shared.fetchTimetable(date: date, updatesCache: updatesCache)
 
         guard !Task.isCancelled else { return }
         if let response {

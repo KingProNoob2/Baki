@@ -3,7 +3,7 @@ import SwiftUI
 struct TimetableScreen: View {
     private static let weekRange = -10...10
 
-    @State private var weekOffset = 0
+    @State private var weekOffset = Self.todayWeekOffset
     @State private var weeks: [Int: TimetableResponse] = Self.initialWeeks()
     @State private var loadedWeeks: Set<Int> = []
     @State private var expandedDays: Set<String> = []
@@ -166,7 +166,8 @@ struct TimetableScreen: View {
 
     @ViewBuilder
     private func lessonRows(for day: Day, in timetable: TimetableResponse?) -> some View {
-        ForEach(Array(day.atoms.enumerated()), id: \.offset) { _, atom in
+        let lessons = day.atoms.filter { $0.subjectId != nil || $0.change != nil }
+        ForEach(Array(lessons.enumerated()), id: \.offset) { _, atom in
             let subject = timetable?.subject(id: atom.subjectId)
             let room = timetable?.room(id: atom.roomId)
             let hour = timetable?.hour(id: atom.hourId)
@@ -248,15 +249,20 @@ struct TimetableScreen: View {
     }
 
     private func loadTimetable(offset: Int) async {
-        let isCurrentWeek = offset == 0
-        let date = isCurrentWeek ? nil : Self.weekInterval(for: offset)?.start
-        let response = try? await BakiClient.shared.fetchTimetable(date: date, updatesCache: isCurrentWeek)
+        let updatesCache = offset == Self.todayWeekOffset
+        let date = offset == 0 ? nil : Self.weekInterval(for: offset)?.start
+        let response = try? await BakiClient.shared.fetchTimetable(date: date, updatesCache: updatesCache)
 
         guard !Task.isCancelled else { return }
         if let response {
             weeks[offset] = response
         }
         loadedWeeks.insert(offset)
+    }
+
+    private static var todayWeekOffset: Int {
+        let weekday = (Calendar.current.component(.weekday, from: Date()) + 5) % 7 + 1
+        return weekday >= 6 ? 1 : 0
     }
 
     private static let calendar: Calendar = {
@@ -278,12 +284,14 @@ struct TimetableScreen: View {
     }
 
     private static func initialWeeks() -> [Int: TimetableResponse] {
-        guard let cached = CredentialStorage.cachedTimetable,
-              let thisWeek = weekInterval(for: 0),
-              cached.days.contains(where: { BakiDate.parse($0.date).map(thisWeek.contains) == true }) else {
-            return [:]
+        guard let cached = CredentialStorage.cachedTimetable else { return [:] }
+        for offset in [0, 1] {
+            if let week = weekInterval(for: offset),
+               cached.days.contains(where: { BakiDate.parse($0.date).map(week.contains) == true }) {
+                return [offset: cached]
+            }
         }
-        return [0: cached]
+        return [:]
     }
 
     private static func weekTitle(for offset: Int) -> String {

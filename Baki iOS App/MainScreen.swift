@@ -180,6 +180,13 @@ struct MainTabView: View {
                 await refreshUnreadCount()
             }
         }
+        .task {
+            for await notification in NotificationCenter.default.notifications(named: .bakiKomensUnreadCountDidChange) {
+                if let count = notification.userInfo?["count"] as? Int {
+                    unreadCount = count
+                }
+            }
+        }
     }
 
     private func consumePendingNotificationRoute() {

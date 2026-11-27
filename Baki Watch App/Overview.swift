@@ -998,9 +998,17 @@ struct Overview: View {
         var received: [KomensMessage]?
         var notices: [KomensMessage]?
 
+        await BakiClient.shared.ensureFreshSession()
+
         await withTaskGroup(of: LoadResult.self) { group in
             group.addTask { .marks(try? await BakiClient.shared.fetchMarks()) }
-            group.addTask { .timetable(try? await BakiClient.shared.fetchTimetable()) }
+            group.addTask {
+                let now = Date()
+                let weekday = Calendar.current.component(.weekday, from: now)
+                let daysAhead = weekday == 7 ? 2 : (weekday == 1 ? 1 : 0)
+                let queryDate = daysAhead > 0 ? Calendar.current.date(byAdding: .day, value: daysAhead, to: now) : nil
+                return .timetable(try? await BakiClient.shared.fetchTimetable(date: queryDate))
+            }
             group.addTask { .received(try? await BakiClient.shared.fetchMessages(type: .received)) }
             group.addTask { .notices(try? await BakiClient.shared.fetchMessages(type: .noticeboard)) }
             group.addTask {

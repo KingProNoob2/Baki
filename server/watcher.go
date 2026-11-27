@@ -4,12 +4,40 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
+
+var (
+	reBlockBreak = regexp.MustCompile(`(?i)<br\s*/?>|</p>|</div>|</tr>|<li[^>]*>`)
+	reHTMLTag    = regexp.MustCompile(`<[^>]+>`)
+	reWhitespace = regexp.MustCompile(`\s+`)
+)
+
+func cleanHTMLText(s string) string {
+	if s == "" {
+		return ""
+	}
+	s = reBlockBreak.ReplaceAllString(s, " ")
+	s = reHTMLTag.ReplaceAllString(s, "")
+	s = html.UnescapeString(s)
+	s = strings.ReplaceAll(s, "\u00a0", " ")
+	s = reWhitespace.ReplaceAllString(s, " ")
+	return strings.TrimSpace(s)
+}
+
+func truncateRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return strings.TrimSpace(string(r[:max])) + "…"
+}
 
 // State remembers what was already seen. A nil set means "first run": the current content is
 // stored silently so you aren't flooded with your whole history.
@@ -57,7 +85,7 @@ func (w *Watcher) save() {
 }
 
 func (w *Watcher) Run(ctx context.Context, every time.Duration) {
-	w.check()
+	w.check(ctx)
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
@@ -65,7 +93,7 @@ func (w *Watcher) Run(ctx context.Context, every time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			w.check()
+			w.check(ctx)
 		}
 	}
 }
@@ -76,14 +104,14 @@ func (w *Watcher) logf(format string, args ...any) {
 
 // send pushes to every device of the account. It reports success if at least one delivery worked
 // (or there is nobody to notify), so an item isn't retried forever because one phone is gone.
-func (w *Watcher) send(title, message, _ string) bool {
+func (w *Watcher) send(title, message, route string) bool {
 	devices := w.devices(w.reg.ID)
 	if len(devices) == 0 {
 		return true
 	}
 	delivered := false
 	for _, d := range devices {
-		switch err := w.apns.Send(d, title, message); err {
+		switch err := w.apns.Send(d, title, message, route); err {
 		case nil:
 			delivered = true
 		case errDeadToken:
@@ -95,30 +123,36 @@ func (w *Watcher) send(title, message, _ string) bool {
 	return delivered
 }
 
-func (w *Watcher) check() {
-	if w.reg.Marks {
-		if r, err := w.client.Marks(); err != nil {
-			w.logf("marks: %v", err)
+func (w *Watcher) check(ctx context.Context) {
+	if w.reg.Marks && ctx.Err() == nil {
+		if r, err := w.client.Marks(ctx); err != nil {
+			if ctx.Err() == nil {
+				w.logf("marks: %v", err)
+			}
 		} else {
 			w.processMarks(r)
 		}
 	}
-	if w.reg.Komens {
-		if m, err := w.client.Messages("received"); err != nil {
-			w.logf("komens: %v", err)
+	if w.reg.Komens && ctx.Err() == nil {
+		if m, err := w.client.Messages(ctx, "received"); err != nil {
+			if ctx.Err() == nil {
+				w.logf("komens: %v", err)
+			}
 		} else {
-			w.processMessages(m, &w.state.Komens, "Komens", "email")
+			w.processMessages(m, &w.state.Komens, "Komens", "komens", true)
 		}
 	}
-	if w.reg.Noticeboard {
-		if m, err := w.client.Messages("noticeboard"); err != nil {
-			w.logf("noticeboard: %v", err)
+	if w.reg.Noticeboard && ctx.Err() == nil {
+		if m, err := w.client.Messages(ctx, "noticeboard"); err != nil {
+			if ctx.Err() == nil {
+				w.logf("noticeboard: %v", err)
+			}
 		} else {
-			w.processMessages(m, &w.state.Noticeboard, "Nástěnka", "newspaper")
+			w.processMessages(m, &w.state.Noticeboard, "Nástěnka", "noticeboard", false)
 		}
 	}
-	if w.reg.Timetable {
-		w.processTimetable()
+	if w.reg.Timetable && ctx.Err() == nil {
+		w.processTimetable(ctx)
 	}
 	w.save()
 }
@@ -156,15 +190,16 @@ func (w *Watcher) processMarks(r *MarksResponse) {
 	}
 	diffNew(&w.state.Marks, ids, func(id string) bool {
 		it := byID[id]
-		body := it.mark.Caption
+		body := strings.TrimSpace(it.mark.Caption)
 		if body == "" {
-			body = it.mark.Theme
+			body = strings.TrimSpace(it.mark.Theme)
 		}
-		return w.send(fmt.Sprintf("%s: %s", it.subject, it.mark.MarkText), body, "memo")
+		body = truncateRunes(body, 240)
+		return w.send(fmt.Sprintf("%s: %s", it.subject, it.mark.MarkText), body, "marks")
 	})
 }
 
-func (w *Watcher) processMessages(msgs []Message, seen *map[string]bool, label, tag string) {
+func (w *Watcher) processMessages(msgs []Message, seen *map[string]bool, label, route string, skipRead bool) {
 	byID := map[string]Message{}
 	var ids []string
 	for _, m := range msgs {
@@ -173,28 +208,38 @@ func (w *Watcher) processMessages(msgs []Message, seen *map[string]bool, label, 
 	}
 	diffNew(seen, ids, func(id string) bool {
 		m := byID[id]
+		if skipRead && m.Read != nil && *m.Read {
+			return true
+		}
 		title := label
-		if m.Sender.Name != "" {
-			title += ": " + m.Sender.Name
+		sender := strings.TrimSpace(m.Sender.Name)
+		if sender == "" {
+			sender = strings.TrimSpace(m.RelevantName)
 		}
-		body := m.Title
+		if sender != "" {
+			title += ": " + sender
+		}
+		body := strings.TrimSpace(m.Title)
+		preview := cleanHTMLText(m.Text)
 		if body == "" {
-			body = m.Text
+			body = preview
+		} else if preview != "" {
+			body += " · " + preview
 		}
-		if len(body) > 300 {
-			body = body[:300] + "…"
-		}
-		return w.send(title, body, tag)
+		body = truncateRunes(body, 240)
+		return w.send(title, body, route)
 	})
 }
 
-func (w *Watcher) processTimetable() {
+func (w *Watcher) processTimetable(ctx context.Context) {
 	now := time.Now()
 	var weeks []*TimetableResponse
 	for _, d := range []time.Time{now, now.AddDate(0, 0, 7)} {
-		r, err := w.client.Timetable(d)
+		r, err := w.client.Timetable(ctx, d)
 		if err != nil {
-			w.logf("timetable: %v", err)
+			if ctx.Err() == nil {
+				w.logf("timetable: %v", err)
+			}
 			return
 		}
 		weeks = append(weeks, r)
@@ -226,20 +271,23 @@ func (w *Watcher) processTimetable() {
 				}
 				desc := strings.TrimSpace(a.Change.Description)
 				if desc == "" {
-					desc = a.Change.TypeName
+					desc = strings.TrimSpace(a.Change.TypeName)
+				}
+				if desc == "" {
+					desc = strings.TrimSpace(a.Change.ChangeType)
 				}
 				id := fmt.Sprintf("%s|%d|%s", date, a.HourID, desc)
 				name := subjects[a.SubjectID]
 				if name == "" {
 					name = "Hodina"
 				}
-				byID[id] = fmt.Sprintf("%s, %s. hodina\n%s", date, hours[a.HourID], name+": "+desc)
+				byID[id] = truncateRunes(fmt.Sprintf("%s, %s. hodina\n%s", date, hours[a.HourID], name+": "+desc), 240)
 				ids = append(ids, id)
 			}
 		}
 	}
 	diffNew(&w.state.Changes, ids, func(id string) bool {
-		return w.send("Změna v rozvrhu", byID[id], "calendar")
+		return w.send("Změna v rozvrhu", byID[id], "timetable")
 	})
 	// Drop changes for days that are over, so the state doesn't grow forever.
 	for id := range w.state.Changes {

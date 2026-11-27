@@ -194,7 +194,6 @@ struct LoginScreen: View {
 
     private func login() async {
         let user = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        let pass = password.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canSubmit else { return }
 
         isLoggingIn = true
@@ -202,7 +201,7 @@ struct LoginScreen: View {
         focus = nil
 
         do {
-            try await BakiClient.shared.login(schoolURL: school?.schoolUrl ?? "", username: user, password: pass)
+            try await BakiClient.shared.login(schoolURL: school?.schoolUrl ?? "", username: user, password: password)
             WidgetCenter.shared.reloadTimelines(ofKind: "BakiTimetableWidget")
             NotificationCenter.default.post(name: .bakiDidSignIn, object: nil)
         } catch {

@@ -5,6 +5,7 @@ final class HomeworkStore {
     var homeworks: [Homework] = []
     var isLoading = false
     var hasLoaded = false
+    var loadFailed = false
 
     func load() async {
         isLoading = true
@@ -16,8 +17,11 @@ final class HomeworkStore {
         let today = calendar.startOfDay(for: Date())
         let from = calendar.date(byAdding: .day, value: -30, to: today) ?? today
         let to = calendar.date(byAdding: .day, value: 60, to: today) ?? today
-        if let fetched = try? await BakiClient.shared.fetchHomeworks(from: from, to: to) {
-            homeworks = fetched
+        do {
+            homeworks = try await BakiClient.shared.fetchHomeworks(from: from, to: to)
+            loadFailed = false
+        } catch {
+            if homeworks.isEmpty { loadFailed = true }
         }
     }
 
@@ -59,6 +63,21 @@ struct HomeworkScreen: View {
         Group {
             if !store.hasLoaded && store.homeworks.isEmpty {
                 HomeworkSkeleton()
+            } else if store.homeworks.isEmpty && store.loadFailed {
+                VStack(spacing: 8) {
+                    Image(systemName: "wifi.exclamationmark")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                    Text("Úkoly se nepodařilo načíst")
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                    Button("Zkusit znovu") {
+                        Task { await store.load() }
+                    }
+                    .tint(.blue)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if pending.isEmpty && recentlyDone.isEmpty {
                 VStack(spacing: 6) {
                     Image(systemName: "checkmark.circle")

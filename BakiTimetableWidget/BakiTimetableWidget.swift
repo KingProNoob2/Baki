@@ -49,6 +49,8 @@ struct Atom: Codable {
     let theme: String?
     let change: Change?
 
+    var isCancelled: Bool { change?.isCancelled == true }
+
     enum CodingKeys: String, CodingKey {
         case hourId = "HourId"
         case subjectId = "SubjectId"
@@ -63,11 +65,19 @@ struct Change: Codable {
     let changeType: String?
     let description: String?
     let time: String?
+    let typeName: String?
+
+    var isCancelled: Bool {
+        description?.localizedCaseInsensitiveContains("odpad") == true ||
+        changeType?.localizedCaseInsensitiveContains("odpad") == true ||
+        typeName?.localizedCaseInsensitiveContains("odpad") == true
+    }
 
     enum CodingKeys: String, CodingKey {
         case changeType = "ChangeType"
         case description = "Description"
         case time = "Time"
+        case typeName = "TypeName"
     }
 }
 
@@ -194,16 +204,28 @@ private let widgetSession: URLSession = {
     return URLSession(configuration: config)
 }()
 
-private func requestTimetable(_ url: URL, bearer: String) async -> TimetableResponse? {
+private enum WidgetFetchResult {
+    case success(TimetableResponse)
+    case unauthorized
+    case failed
+}
+
+private func requestTimetable(_ url: URL, bearer: String) async -> WidgetFetchResult {
     var request = URLRequest(url: url)
     request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
     guard let (data, response) = try? await widgetSession.data(for: request),
-          (response as? HTTPURLResponse)?.statusCode == 200,
+          let http = response as? HTTPURLResponse else {
+        return .failed
+    }
+    if http.statusCode == 401 {
+        return .unauthorized
+    }
+    guard http.statusCode == 200,
           let decoded = try? jsonDecoder.decode(TimetableResponse.self, from: data) else {
-        return nil
+        return .failed
     }
     saveCachedTimetable(data)
-    return decoded
+    return .success(decoded)
 }
 
 private func fetchTimetableResponse() async -> (response: TimetableResponse?, error: String?) {
@@ -225,8 +247,15 @@ private func fetchTimetableResponse() async -> (response: TimetableResponse?, er
 
     var bearer = getCredential("bearer")
 
-    if !bearer.isEmpty, let decoded = await requestTimetable(ttURL, bearer: bearer) {
-        return (decoded, nil)
+    if !bearer.isEmpty {
+        switch await requestTimetable(ttURL, bearer: bearer) {
+        case .success(let decoded):
+            return (decoded, nil)
+        case .failed:
+            return cachedOr("Chyba sítě")
+        case .unauthorized:
+            break
+        }
     }
 
     guard let loginURL = URL(string: baseURL + "/api/login") else {
@@ -253,6 +282,11 @@ private func fetchTimetableResponse() async -> (response: TimetableResponse?, er
             if let newRefresh = json["refresh_token"] as? String, !newRefresh.isEmpty {
                 saveCredential(newRefresh, key: "refreshToken")
             }
+            if let expiresIn = json["expires_in"] as? TimeInterval, expiresIn > 0 {
+                sharedDefaults?.set(Date(timeIntervalSinceNow: expiresIn).timeIntervalSince1970, forKey: "tokenExpiresAt")
+            } else if let expiresInInt = json["expires_in"] as? Int, expiresInInt > 0 {
+                sharedDefaults?.set(Date(timeIntervalSinceNow: TimeInterval(expiresInInt)).timeIntervalSince1970, forKey: "tokenExpiresAt")
+            }
         }
     } catch {
         return cachedOr("Chyba sítě")
@@ -262,7 +296,7 @@ private func fetchTimetableResponse() async -> (response: TimetableResponse?, er
         return cachedOr("Přihlaste se")
     }
 
-    if let decoded = await requestTimetable(ttURL, bearer: bearer) {
+    if case .success(let decoded) = await requestTimetable(ttURL, bearer: bearer) {
         return (decoded, nil)
     }
     return cachedOr("Chyba rozvrhu")
@@ -288,13 +322,7 @@ private func parseLessons(for day: Day, lookup: TimetableLookup, on baseDate: Da
         }
 
         let validAtoms = atoms.filter { $0.subjectId != nil || $0.change != nil || $0.theme != nil }
-        guard !validAtoms.isEmpty else { continue }
-
-        let selectedAtom = validAtoms.first(where: { atom in
-            let isCancelled = atom.change?.description?.localizedCaseInsensitiveContains("odpad") == true ||
-                              atom.change?.changeType?.localizedCaseInsensitiveContains("odpad") == true
-            return !isCancelled
-        }) ?? validAtoms[0]
+        guard let selectedAtom = validAtoms.first(where: { !$0.isCancelled }) else { continue }
 
         let subject = selectedAtom.subjectId.flatMap { lookup.subjects[$0] }
         let room = selectedAtom.roomId.flatMap { lookup.rooms[$0] }

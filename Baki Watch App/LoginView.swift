@@ -122,8 +122,7 @@ struct LoginView: View {
 
     private func login() async {
         let trimmedUser = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedPass = password.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedUser.isEmpty, !trimmedPass.isEmpty else {
+        guard !trimmedUser.isEmpty, !password.isEmpty else {
             errorMessage = "Zadejte jméno a heslo"
             return
         }
@@ -132,7 +131,7 @@ struct LoginView: View {
         errorMessage = nil
 
         do {
-            try await BakiClient.shared.login(schoolURL: schoolURL, username: trimmedUser, password: trimmedPass)
+            try await BakiClient.shared.login(schoolURL: schoolURL, username: trimmedUser, password: password)
             WidgetCenter.shared.reloadTimelines(ofKind: "BakiTimetableWidget")
             NotificationCenter.default.post(name: .bakiDidSignIn, object: nil)
         } catch {

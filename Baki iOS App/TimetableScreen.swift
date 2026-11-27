@@ -52,6 +52,13 @@ struct TimetableScreen: View {
         }
     }
 
+    #if os(iOS)
+    nonisolated private struct DayPageGeometry: Equatable, Sendable {
+        let weekOffset: Int
+        let height: CGFloat
+    }
+    #endif
+
     private var usesDuoSplit: Bool {
         #if os(iOS)
         allowsDuoSplit && DuoEnvironment.isInnerDisplay(
@@ -251,6 +258,7 @@ struct TimetableScreen: View {
     private func dayList(days: [Day], timetable: TimetableResponse?, now: Date) -> some View {
         #if os(iOS)
         let activeWeekday = days.contains { $0.dayOfWeek == selectedWeekday } ? selectedWeekday : days[0].dayOfWeek
+        let currentWeekOffset = weekOffset
         let version = weekVersions[weekOffset] ?? 0
         let minuteBucket = Int(now.timeIntervalSinceReferenceDate / 60)
 
@@ -274,9 +282,12 @@ struct TimetableScreen: View {
                                 .padding(.horizontal, 8)
                         }
                         .equatable()
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                            if height > 0, abs((dayHeights[day.dayOfWeek] ?? 0) - height) > 0.5 {
-                                dayHeights[day.dayOfWeek] = height
+                        .onGeometryChange(for: DayPageGeometry.self) { [currentWeekOffset] proxy in
+                            DayPageGeometry(weekOffset: currentWeekOffset, height: proxy.size.height)
+                        } action: { geo in
+                            if geo.weekOffset == weekOffset, geo.height > 0,
+                               abs((dayHeights[day.dayOfWeek] ?? 0) - geo.height) > 0.5 {
+                                dayHeights[day.dayOfWeek] = geo.height
                             }
                         }
                         .containerRelativeFrame(.horizontal)
@@ -310,9 +321,12 @@ struct TimetableScreen: View {
                 }
             }
         }
-        .onChange(of: weekOffset) { _, _ in
-            dayHeights.removeAll()
-            dayScrollPosition.scrollTo(id: activeWeekday)
+        .onChange(of: weekOffset) { _, newOffset in
+            let nextDays = weeks[newOffset]?.days ?? days
+            let target = nextDays.contains { $0.dayOfWeek == selectedWeekday }
+                ? selectedWeekday
+                : (nextDays.first?.dayOfWeek ?? selectedWeekday)
+            dayScrollPosition.scrollTo(id: target)
         }
         #else
         let day = days.first { $0.dayOfWeek == selectedWeekday } ?? days[0]
@@ -573,12 +587,12 @@ struct TimetableScreen: View {
             guard let hour = timetable?.hour(id: atom.hourId), let dates = hour.dates(on: date) else { continue }
             if dates.end <= now {
                 result[index] = .past
-            } else if dates.start <= now {
+            } else if dates.start <= now && !atom.isCancelled {
                 let total = dates.end.timeIntervalSince(dates.start)
                 let progress = total > 0 ? now.timeIntervalSince(dates.start) / total : 0
                 let minutesLeft = Int(ceil(dates.end.timeIntervalSince(now) / 60))
                 result[index] = .active(progress: progress, minutesLeft: minutesLeft)
-            } else if !foundNext && !atom.isCancelled {
+            } else if !foundNext && !atom.isCancelled && dates.start > now {
                 foundNext = true
                 result[index] = .next(minutesUntil: Int(ceil(dates.start.timeIntervalSince(now) / 60)))
             }
@@ -591,9 +605,9 @@ struct TimetableScreen: View {
     }
 
     private func loadTimetable(offset: Int) async {
-        let isCurrentWeek = offset == 0
-        let date = isCurrentWeek ? nil : Self.weekInterval(for: offset)?.start
-        let response = try? await BakiClient.shared.fetchTimetable(date: date, updatesCache: isCurrentWeek)
+        let updatesCache = offset == Self.todayWeekOffset
+        let date = offset == 0 ? nil : Self.weekInterval(for: offset)?.start
+        let response = try? await BakiClient.shared.fetchTimetable(date: date, updatesCache: updatesCache)
 
         guard !Task.isCancelled else { return }
         if let response {

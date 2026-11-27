@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,9 +35,14 @@ func NewClient(schoolURL, username, password string) *Client {
 	}
 }
 
-func (c *Client) tokenRequest(form url.Values) error {
+func (c *Client) tokenRequest(ctx context.Context, form url.Values) error {
 	form.Set("client_id", "ANDR")
-	resp, err := c.http.PostForm(c.base+"/api/login", form)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/api/login", strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
 	}
@@ -60,22 +66,25 @@ func (c *Client) tokenRequest(form url.Values) error {
 }
 
 // authenticate tries the refresh token first and falls back to the password.
-func (c *Client) authenticate() error {
+func (c *Client) authenticate(ctx context.Context) error {
 	if c.refreshToken != "" {
-		err := c.tokenRequest(url.Values{"grant_type": {"refresh_token"}, "refresh_token": {c.refreshToken}})
+		err := c.tokenRequest(ctx, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {c.refreshToken}})
 		if err == nil {
 			return nil
 		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 	}
-	return c.tokenRequest(url.Values{"grant_type": {"password"}, "username": {c.username}, "password": {c.password}})
+	return c.tokenRequest(ctx, url.Values{"grant_type": {"password"}, "username": {c.username}, "password": {c.password}})
 }
 
-func (c *Client) get(path, method string, out any) error {
+func (c *Client) get(ctx context.Context, path, method string, out any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	do := func() (int, []byte, error) {
-		req, err := http.NewRequest(method, c.base+path, nil)
+		req, err := http.NewRequestWithContext(ctx, method, c.base+path, nil)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -90,13 +99,13 @@ func (c *Client) get(path, method string, out any) error {
 	}
 
 	if c.bearer == "" {
-		if err := c.authenticate(); err != nil {
+		if err := c.authenticate(ctx); err != nil {
 			return err
 		}
 	}
 	status, body, err := do()
 	if err == nil && status == http.StatusUnauthorized {
-		if err = c.authenticate(); err != nil {
+		if err = c.authenticate(ctx); err != nil {
 			return err
 		}
 		status, body, err = do()
@@ -138,10 +147,12 @@ type MarksResponse struct {
 }
 
 type Message struct {
-	ID     string `json:"Id"`
-	Title  string `json:"Title"`
-	Text   string `json:"Text"`
-	Sender struct {
+	ID           string `json:"Id"`
+	Title        string `json:"Title"`
+	Text         string `json:"Text"`
+	Read         *bool  `json:"Read"`
+	RelevantName string `json:"RelevantName"`
+	Sender       struct {
 		Name string `json:"Name"`
 	} `json:"Sender"`
 }
@@ -167,22 +178,23 @@ type TimetableResponse struct {
 }
 
 type Change struct {
+	ChangeType  string `json:"ChangeType"`
 	Description string `json:"Description"`
 	TypeName    string `json:"TypeName"`
 }
 
-func (c *Client) Marks() (*MarksResponse, error) {
+func (c *Client) Marks(ctx context.Context) (*MarksResponse, error) {
 	var r MarksResponse
-	return &r, c.get("/api/3/marks", "GET", &r)
+	return &r, c.get(ctx, "/api/3/marks", "GET", &r)
 }
 
-func (c *Client) Messages(kind string) ([]Message, error) {
+func (c *Client) Messages(ctx context.Context, kind string) ([]Message, error) {
 	var r MessagesResponse
-	err := c.get("/api/3/komens/messages/"+kind, "POST", &r)
+	err := c.get(ctx, "/api/3/komens/messages/"+kind, "POST", &r)
 	return r.Messages, err
 }
 
-func (c *Client) Timetable(date time.Time) (*TimetableResponse, error) {
+func (c *Client) Timetable(ctx context.Context, date time.Time) (*TimetableResponse, error) {
 	var r TimetableResponse
-	return &r, c.get("/api/3/timetable/actual?date="+date.Format("2006-01-02"), "GET", &r)
+	return &r, c.get(ctx, "/api/3/timetable/actual?date="+date.Format("2006-01-02"), "GET", &r)
 }

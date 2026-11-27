@@ -362,11 +362,12 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             }
         case .timetable:
             guard snapshot.timetableDays == nil else { return }
-            if let week1 = try? await BakiClient.shared.fetchTimetable(date: Date(), updatesCache: true, recordSnapshot: false) {
+            let isWeekend = Calendar.current.isDateInWeekend(Date())
+            if let week1 = try? await BakiClient.shared.fetchTimetable(date: Date(), updatesCache: !isWeekend, recordSnapshot: false) {
                 recordTimetable(week1)
             }
             if let nextWeekDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()),
-               let week2 = try? await BakiClient.shared.fetchTimetable(date: nextWeekDate, updatesCache: false, recordSnapshot: false) {
+               let week2 = try? await BakiClient.shared.fetchTimetable(date: nextWeekDate, updatesCache: isWeekend, recordSnapshot: false) {
                 recordTimetable(week2)
             }
         }
@@ -460,11 +461,12 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 }
             }
             if checkTimetable {
+                let isWeekend = Calendar.current.isDateInWeekend(Date())
                 remaining += 1
                 group.addTask {
                     .week1(try? await BakiClient.shared.fetchTimetable(
                         date: Date(),
-                        updatesCache: !isBackground,
+                        updatesCache: !isBackground && !isWeekend,
                         recordSnapshot: false,
                         timeout: requestTimeout
                     ))
@@ -474,7 +476,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                     group.addTask {
                         .week2(try? await BakiClient.shared.fetchTimetable(
                             date: nextWeekDate,
-                            updatesCache: false,
+                            updatesCache: !isBackground && isWeekend,
                             recordSnapshot: false,
                             timeout: requestTimeout
                         ))

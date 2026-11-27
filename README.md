@@ -15,8 +15,8 @@ Neoficiální aplikace pro Bakaláře na iPhone, iPad, Mac a Apple Watch.
 ### Mac
 
 - **Nativní třísloupcové rozhraní** – boční panel, seznam a detail položky.
-- **Všechny sekce** – známky, rozvrh, úkoly, Komens, absence, vysvědčení, nástěnka a předvídač známek.
-- **Klávesové zkratky** – `⌘1–⌘8` pro přepínání sekcí, `⌘R` obnovení, `⌘T` návrat na dnešek a `⌘[` / `⌘]` pro týdny v rozvrhu.
+- **Všechny sekce** – známky, rozvrh, úkoly, Komens, absence, vysvědčení, nástěnka, předvídač známek a témata.
+- **Klávesové zkratky** – `⌘1–⌘9` pro přepínání sekcí, `⌘R` obnovení, `⌘T` návrat na dnešek a `⌘[` / `⌘]` pro týdny v rozvrhu.
 
 ### Apple Watch
 

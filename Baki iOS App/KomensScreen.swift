@@ -52,7 +52,7 @@ struct MessagesScreen: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return messages }
         return messages.filter { message in
-            [message.sender?.name ?? message.relevantName, message.title, message.text]
+            [message.sender?.name ?? message.relevantName, message.title, message.plainText]
                 .contains { $0?.localizedStandardContains(query) == true }
         }
     }
@@ -375,7 +375,8 @@ struct MessageDetailView: View {
     }
 
     var body: some View {
-        let cleanText = cleanHTML(message.text ?? "")
+        let plainText = message.plainText
+        let markdownText = cleanHTML(message.text ?? "", preserveLinks: true)
 
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -399,13 +400,23 @@ struct MessageDetailView: View {
                     }
                 }
 
+                if message.awaitsConfirmation {
+                    Label("Vyžaduje potvrzení přečtení ve webových Bakalářích", systemImage: "exclamationmark.circle")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.14), in: .rect(cornerRadius: 10, style: .continuous))
+                }
+
                 Divider()
 
-                if !cleanText.isEmpty {
+                if !plainText.isEmpty {
                     Text((try? AttributedString(
-                        markdown: cleanText,
+                        markdown: markdownText,
                         options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-                    )) ?? AttributedString(cleanText))
+                    )) ?? AttributedString(plainText))
                         .font(.body)
                         .lineSpacing(4)
                         .fixedSize(horizontal: false, vertical: true)
@@ -424,9 +435,9 @@ struct MessageDetailView: View {
         }
         .duoDetailNavigationTitle("", isEmbeddedInSplit: isEmbeddedInSplit)
         .toolbar {
-            if !cleanText.isEmpty {
+            if !plainText.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
-                    ShareLink(item: "\(title)\n\n\(cleanText)")
+                    ShareLink(item: "\(title)\n\n\(plainText)")
                 }
             }
             if canReply {
@@ -572,8 +583,12 @@ struct SenderAvatar: View {
 }
 
 private enum HTMLCleaner {
+    static let anchorRegex = try? NSRegularExpression(
+        pattern: "<a\\s+[^>]*href=[\"']([^\"']*)[\"'][^>]*>(.*?)</a>",
+        options: [.caseInsensitive, .dotMatchesLineSeparators]
+    )
+
     static let replacements: [(regex: NSRegularExpression, template: String)] = [
-        ("(?i)<a\\s+[^>]*href=[\"']([^\"']*)[\"'][^>]*>(.*?)</a>", "[$2]($1)"),
         ("(?i)<br\\s*/?>", "\n"),
         ("(?i)</p>|</div>|</tr>", "\n\n"),
         ("(?i)<li[^>]*>", "\n• "),
@@ -583,10 +598,13 @@ private enum HTMLCleaner {
     }
 
     static let excessNewlines = try? NSRegularExpression(pattern: "\n{3,}")
+    static let numericEntity = try? NSRegularExpression(pattern: "&#(x[0-9a-fA-F]+|[0-9]+);")
 
     static let entities: [(String, String)] = [
-        ("&nbsp;", " "), ("&lt;", "<"), ("&gt;", ">"),
+        ("&nbsp;", " "), ("&shy;", ""), ("&lt;", "<"), ("&gt;", ">"),
         ("&quot;", "\""), ("&apos;", "'"), ("&#39;", "'"),
+        ("&bdquo;", "„"), ("&ldquo;", "“"), ("&rdquo;", "”"),
+        ("&lsquo;", "‘"), ("&rsquo;", "’"), ("&laquo;", "«"), ("&raquo;", "»"),
         ("&ndash;", "–"), ("&mdash;", "—"), ("&hellip;", "…"),
         ("&bull;", "•"), ("&copy;", "©"), ("&euro;", "€"),
         ("&amp;", "&")
@@ -597,22 +615,73 @@ private enum HTMLCleaner {
         let range = NSRange(text.startIndex..., in: text)
         return regex.stringByReplacingMatches(in: text, range: range, withTemplate: template)
     }
+
+    static func decodeEntities(_ input: String) -> String {
+        guard input.contains("&") else { return input }
+        var text = input
+        for (entity, replacement) in entities {
+            text = text.replacingOccurrences(of: entity, with: replacement)
+        }
+        if let regex = numericEntity, text.contains("&#") {
+            let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+            for match in matches.reversed() {
+                guard let fullRange = Range(match.range, in: text),
+                      let codeRange = Range(match.range(at: 1), in: text) else { continue }
+                let token = text[codeRange]
+                let codePoint: UInt32?
+                if token.first == "x" || token.first == "X" {
+                    codePoint = UInt32(token.dropFirst(), radix: 16)
+                } else {
+                    codePoint = UInt32(token, radix: 10)
+                }
+                if let cp = codePoint, let scalar = UnicodeScalar(cp) {
+                    text.replaceSubrange(fullRange, with: String(scalar))
+                }
+            }
+        }
+        return text
+    }
+
+    static func convertAnchors(_ html: String, preserveLinks: Bool) -> String {
+        guard let regex = anchorRegex, html.range(of: "<a", options: .caseInsensitive) != nil else {
+            return html
+        }
+        var result = html
+        let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result))
+        for match in matches.reversed() {
+            guard let fullRange = Range(match.range, in: result),
+                  let hrefRange = Range(match.range(at: 1), in: result),
+                  let bodyRange = Range(match.range(at: 2), in: result) else { continue }
+            let rawHref = decodeEntities(String(result[hrefRange])).trimmingCharacters(in: .whitespacesAndNewlines)
+            var label = String(result[bodyRange])
+            for (tagRegex, template) in replacements {
+                label = replace(tagRegex, in: label, with: template)
+            }
+            label = decodeEntities(label)
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if preserveLinks, !rawHref.isEmpty {
+                let safeLabel = (label.isEmpty ? rawHref : label)
+                    .replacingOccurrences(of: "[", with: "\\[")
+                    .replacingOccurrences(of: "]", with: "\\]")
+                result.replaceSubrange(fullRange, with: "[\(safeLabel)](<\(rawHref)>)")
+            } else {
+                result.replaceSubrange(fullRange, with: label.isEmpty ? rawHref : label)
+            }
+        }
+        return result
+    }
 }
 
-func cleanHTML(_ html: String) -> String {
+func cleanHTML(_ html: String, preserveLinks: Bool = false) -> String {
     guard !html.isEmpty else { return "" }
-    var text = html
+    var text = HTMLCleaner.convertAnchors(html, preserveLinks: preserveLinks)
 
     for (regex, template) in HTMLCleaner.replacements {
         text = HTMLCleaner.replace(regex, in: text, with: template)
     }
 
-    if text.contains("&") {
-        for (entity, replacement) in HTMLCleaner.entities {
-            text = text.replacingOccurrences(of: entity, with: replacement)
-        }
-    }
-
+    text = HTMLCleaner.decodeEntities(text)
     text = HTMLCleaner.replace(HTMLCleaner.excessNewlines, in: text, with: "\n\n")
 
     return text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -801,7 +870,12 @@ struct ComposeMessageView: View {
             }
         }
         .onChange(of: selectedTypeID) {
-            selectedRecipientTypeID = messageType?.recipientsTypes.first?.id
+            let nextID = messageType?.recipientsTypes.first?.id
+            if selectedRecipientTypeID == nextID {
+                applyDefaultRecipients()
+            } else {
+                selectedRecipientTypeID = nextID
+            }
         }
         .onChange(of: selectedRecipientTypeID) {
             applyDefaultRecipients()

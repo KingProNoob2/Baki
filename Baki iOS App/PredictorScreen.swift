@@ -68,7 +68,7 @@ struct PredictorScreen: View {
             } header: {
                 Text("Předmět")
             } footer: {
-                Text("Vyberte předmět a zkuste přidat známky, které byste mohli dostat. Průměr spočítá škola.")
+                Text("Vyberte předmět a zkuste přidat známky, které byste mohli dostat. Orientační vážený průměr se spočítá přímo v aplikaci.")
             }
         }
         .groupedList()
@@ -94,7 +94,7 @@ struct PredictorScreen: View {
             } header: {
                 Text("Předmět")
             } footer: {
-                Text("Vyberte předmět a zkuste přidat známky, které byste mohli dostat. Průměr spočítá škola.")
+                Text("Vyberte předmět a zkuste přidat známky, které byste mohli dostat. Orientační vážený průměr se spočítá přímo v aplikaci.")
             }
         }
         .groupedList()

@@ -422,11 +422,18 @@ enum MarkColor {
     }
 
     static func forMark(_ text: String) -> Color {
-        guard let first = text.trimmingCharacters(in: .whitespaces).first,
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.first,
               let digit = first.wholeNumberValue, (1...5).contains(digit) else {
             return .gray
         }
-        return forGrade(Double(digit))
+        if trimmed.count == 1 {
+            return forGrade(Double(digit))
+        }
+        if trimmed.count == 2, let suffix = trimmed.last, "-+*!".contains(suffix) {
+            return forGrade(Double(digit))
+        }
+        return .gray
     }
 
     static func foreground(for color: Color) -> Color {

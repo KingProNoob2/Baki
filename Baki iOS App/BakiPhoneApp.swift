@@ -10,6 +10,7 @@ final class BakiAppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         NotificationService.shared.configure()
         PushService.shared.registerForPush()
+        _ = PhoneLinkManager.shared
         return true
     }
 

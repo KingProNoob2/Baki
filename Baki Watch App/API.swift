@@ -29,6 +29,18 @@ struct CredentialStorage {
         set { set(newValue, forKey: "refreshToken") }
     }
 
+    static var tokenExpiresAt: Date? {
+        get {
+            let ts = defaults?.double(forKey: "tokenExpiresAt") ?? UserDefaults.standard.double(forKey: "tokenExpiresAt")
+            return ts > 0 ? Date(timeIntervalSince1970: ts) : nil
+        }
+        set {
+            let ts = newValue?.timeIntervalSince1970 ?? 0
+            defaults?.set(ts, forKey: "tokenExpiresAt")
+            UserDefaults.standard.set(ts, forKey: "tokenExpiresAt")
+        }
+    }
+
     static var hasValidSession: Bool {
         !baseURL.isEmpty && (!bearer.isEmpty || !refreshToken.isEmpty)
     }
@@ -59,6 +71,8 @@ struct CredentialStorage {
         defaults?.removeObject(forKey: "bearer")
         defaults?.removeObject(forKey: "refreshToken")
         defaults?.removeObject(forKey: "cachedTimetable")
+        defaults?.removeObject(forKey: "tokenExpiresAt")
+        UserDefaults.standard.removeObject(forKey: "tokenExpiresAt")
         keychain.delete("baseURL")
         keychain.delete("bearer")
         keychain.delete("refreshToken")
@@ -156,13 +170,36 @@ final class BakiClient {
         CredentialStorage.baseURL = base
         CredentialStorage.bearer = accessToken
         CredentialStorage.refreshToken = refreshToken
+        if let expiresIn = json["expires_in"] as? TimeInterval, expiresIn > 0 {
+            CredentialStorage.tokenExpiresAt = Date(timeIntervalSinceNow: expiresIn)
+        } else if let expiresInInt = json["expires_in"] as? Int, expiresInInt > 0 {
+            CredentialStorage.tokenExpiresAt = Date(timeIntervalSinceNow: TimeInterval(expiresInInt))
+        }
     }
 
     private var refreshTask: Task<Bool, Never>?
 
-    func refreshSession() async -> Bool {
+    func ensureFreshSession() async {
+        guard CredentialStorage.hasValidSession else { return }
+        let needsRefresh: Bool
+        if CredentialStorage.bearer.isEmpty {
+            needsRefresh = true
+        } else if let expiresAt = CredentialStorage.tokenExpiresAt {
+            needsRefresh = expiresAt.timeIntervalSinceNow < 90
+        } else {
+            needsRefresh = false
+        }
+        if needsRefresh {
+            _ = await refreshSession()
+        }
+    }
+
+    func refreshSession(failingToken: String? = nil) async -> Bool {
         if let refreshTask {
             return await refreshTask.value
+        }
+        if let failingToken, !CredentialStorage.bearer.isEmpty, CredentialStorage.bearer != failingToken {
+            return true
         }
         let task = Task { await performRefresh() }
         refreshTask = task
@@ -208,6 +245,11 @@ final class BakiClient {
             CredentialStorage.bearer = newAccess
             if let newRefresh = json["refresh_token"] as? String, !newRefresh.isEmpty {
                 CredentialStorage.refreshToken = newRefresh
+            }
+            if let expiresIn = json["expires_in"] as? TimeInterval, expiresIn > 0 {
+                CredentialStorage.tokenExpiresAt = Date(timeIntervalSinceNow: expiresIn)
+            } else if let expiresInInt = json["expires_in"] as? Int, expiresInInt > 0 {
+                CredentialStorage.tokenExpiresAt = Date(timeIntervalSinceNow: TimeInterval(expiresInInt))
             }
             return true
         } catch {
@@ -278,13 +320,14 @@ final class BakiClient {
             throw APIError.invalidURL
         }
 
+        let initialBearer = CredentialStorage.bearer
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue("Bearer \(CredentialStorage.bearer)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(initialBearer)", forHTTPHeaderField: "Authorization")
 
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode == 401 {
-            let refreshed = await refreshSession()
+            let refreshed = await refreshSession(failingToken: initialBearer)
             guard refreshed else {
                 throw APIError.unauthorized
             }

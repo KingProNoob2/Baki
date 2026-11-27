@@ -144,6 +144,7 @@ struct MacCertificateDetailView: View {
                         Text(averageText)
                             .font(.system(size: 26, weight: .bold, design: .rounded).monospacedDigit())
                     }
+                    .foregroundStyle(MarkColor.foreground(for: averageColor))
                 }
             }
 

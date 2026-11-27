@@ -10,6 +10,7 @@ extension Notification.Name {
     static let bakiDidSignIn = Notification.Name("bakiDidSignIn")
     static let bakiDidSignOut = Notification.Name("bakiDidSignOut")
     static let bakiKomensReadChanged = Notification.Name("bakiKomensReadChanged")
+    static let bakiKomensUnreadCountDidChange = Notification.Name("bakiKomensUnreadCountDidChange")
 }
 
 struct CredentialStorage {
@@ -86,6 +87,8 @@ struct CredentialStorage {
         keychain.delete("bearer")
         keychain.delete("refreshToken")
         keychain.delete("username")
+        let attachmentsDir = FileManager.default.temporaryDirectory.appendingPathComponent("Attachments", isDirectory: true)
+        try? FileManager.default.removeItem(at: attachmentsDir)
     }
 
     static func signOut() {
@@ -212,9 +215,12 @@ final class BakiClient {
         }
     }
 
-    func refreshSession() async -> Bool {
+    func refreshSession(failingToken: String? = nil) async -> Bool {
         if let refreshTask {
             return await refreshTask.value
+        }
+        if let failingToken, !CredentialStorage.bearer.isEmpty, CredentialStorage.bearer != failingToken {
+            return true
         }
         let task = Task { await performRefresh() }
         refreshTask = task
@@ -376,6 +382,14 @@ final class BakiClient {
         }
         #endif
 
+        if type == .received {
+            NotificationCenter.default.post(
+                name: .bakiKomensUnreadCountDidChange,
+                object: nil,
+                userInfo: ["count": sorted.filter(\.isUnread).count]
+            )
+        }
+
         return sorted
     }
 
@@ -452,13 +466,13 @@ final class BakiClient {
             throw APIError.invalidURL
         }
 
-        func makeRequest() -> URLRequest {
+        func makeRequest(bearer: String) -> URLRequest {
             var request = URLRequest(url: url)
             request.httpMethod = method
             if let timeout {
                 request.timeoutInterval = timeout
             }
-            request.setValue("Bearer \(CredentialStorage.bearer)", forHTTPHeaderField: "Authorization")
+            request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
             if let contentType {
                 request.setValue(contentType, forHTTPHeaderField: "Content-Type")
             }
@@ -466,13 +480,14 @@ final class BakiClient {
             return request
         }
 
-        let (data, response) = try await session.data(for: makeRequest())
+        let initialBearer = CredentialStorage.bearer
+        let (data, response) = try await session.data(for: makeRequest(bearer: initialBearer))
         if let http = response as? HTTPURLResponse, http.statusCode == 401 {
-            let refreshed = await refreshSession()
+            let refreshed = await refreshSession(failingToken: initialBearer)
             guard refreshed else {
                 throw APIError.unauthorized
             }
-            let (retryData, retryResponse) = try await session.data(for: makeRequest())
+            let (retryData, retryResponse) = try await session.data(for: makeRequest(bearer: CredentialStorage.bearer))
             return try validated(retryData, retryResponse)
         }
 
@@ -659,6 +674,36 @@ final class PhoneLinkManager: NSObject, WCSessionDelegate {
 
     nonisolated func sessionDidDeactivate(_ session: WCSession) {
         session.activate()
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        handleIncomingPayload(message)
+    }
+
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveMessage message: [String: Any],
+        replyHandler: @escaping ([String: Any]) -> Void
+    ) {
+        handleIncomingPayload(message)
+        replyHandler([:])
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        handleIncomingPayload(userInfo)
+    }
+
+    nonisolated private func handleIncomingPayload(_ payload: [String: Any]) {
+        guard payload["action"] as? String == "openURL",
+              let raw = payload["url"] as? String,
+              let url = URL(string: raw),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return
+        }
+        Task { @MainActor in
+            UIApplication.shared.open(url)
+        }
     }
 }
 #endif

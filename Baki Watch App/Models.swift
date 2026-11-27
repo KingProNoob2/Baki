@@ -152,7 +152,9 @@ struct Day: Codable, Identifiable {
 }
 
 struct Atom: Codable, Identifiable {
-    var id: String { "\(hourId)_\(subjectId ?? "")_\(teacherId ?? "")_\(roomId ?? "")" }
+    var id: String {
+        "\(hourId)_\(subjectId ?? "")_\(teacherId ?? "")_\(roomId ?? "")_\(theme ?? "")_\(change?.changeType ?? "")_\(change?.description ?? "")"
+    }
     let hourId: Int
     let subjectId: String?
     let teacherId: String?
@@ -319,7 +321,11 @@ struct KomensMessage: Codable, Identifiable {
     }
 
     var isUnread: Bool {
-        read == false && !awaitsConfirmation
+        read == false
+    }
+
+    var plainText: String {
+        cleanHTML(text ?? "")
     }
 
     var effectiveDateString: String? {
@@ -409,7 +415,7 @@ struct Homework: Decodable, Identifiable {
     }
 
     var contentText: String {
-        let raw = (content ?? "").replacingOccurrences(of: "/n", with: "\n")
+        let raw = (content ?? "").replacingOccurrences(of: "\\n", with: "\n")
         return cleanHTML(raw)
     }
 

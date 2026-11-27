@@ -36,6 +36,11 @@ func registrationID(schoolURL, username string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
+type runningWatcher struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
 // Manager owns all registrations and runs one watcher per account.
 type Manager struct {
 	ctx  context.Context
@@ -45,7 +50,7 @@ type Manager struct {
 
 	mu       sync.Mutex
 	regs     map[string]*Registration
-	watchers map[string]context.CancelFunc
+	watchers map[string]*runningWatcher
 	wg       sync.WaitGroup
 }
 
@@ -56,7 +61,7 @@ func NewManager(ctx context.Context, cfg *Config, apns *APNs) *Manager {
 		apns:     apns,
 		path:     filepath.Join(cfg.DataDir, "registrations.json"),
 		regs:     map[string]*Registration{},
-		watchers: map[string]context.CancelFunc{},
+		watchers: map[string]*runningWatcher{},
 	}
 	return m
 }
@@ -94,15 +99,31 @@ func (m *Manager) saveLocked() {
 }
 
 func (m *Manager) startWatcherLocked(r *Registration) {
-	if cancel, ok := m.watchers[r.ID]; ok {
-		cancel()
+	var prevDone <-chan struct{}
+	if prev, ok := m.watchers[r.ID]; ok {
+		prev.cancel()
+		prevDone = prev.done
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
-	m.watchers[r.ID] = cancel
-	w := NewWatcher(*r, m.apns, m.cfg.DataDir, m.DevicesFor, m.dropDevice)
+	done := make(chan struct{})
+	m.watchers[r.ID] = &runningWatcher{cancel: cancel, done: done}
+	regCopy := *r
+	regCopy.Devices = append([]Device(nil), r.Devices...)
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
+		defer close(done)
+		if prevDone != nil {
+			select {
+			case <-prevDone:
+			case <-ctx.Done():
+				return
+			}
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		w := NewWatcher(regCopy, m.apns, m.cfg.DataDir, m.DevicesFor, m.dropDevice)
 		w.Run(ctx, time.Duration(m.cfg.PollSeconds)*time.Second)
 	}()
 }
@@ -150,12 +171,29 @@ func (m *Manager) dropDevice(id, token string) {
 	}
 	r.Devices = kept
 	if len(kept) == 0 {
-		if cancel, ok := m.watchers[id]; ok {
-			cancel()
+		var prevDone <-chan struct{}
+		if prev, ok := m.watchers[id]; ok {
+			prev.cancel()
+			prevDone = prev.done
 			delete(m.watchers, id)
 		}
 		delete(m.regs, id)
-		_ = os.Remove(filepath.Join(m.cfg.DataDir, "state-"+id+".json"))
+		statePath := filepath.Join(m.cfg.DataDir, "state-"+id+".json")
+		if prevDone != nil {
+			m.wg.Add(1)
+			go func() {
+				defer m.wg.Done()
+				<-prevDone
+				m.mu.Lock()
+				_, readded := m.regs[id]
+				m.mu.Unlock()
+				if !readded {
+					_ = os.Remove(statePath)
+				}
+			}()
+		} else {
+			_ = os.Remove(statePath)
+		}
 	}
 	m.saveLocked()
 }
